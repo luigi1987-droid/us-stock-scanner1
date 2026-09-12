@@ -25,6 +25,6 @@ jobs:
 
       - name: Run scanner script
         env:
-          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
-          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
         run: python scanner_idnr4.py
