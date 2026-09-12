@@ -73,8 +73,6 @@ STOCKS_WATCHLIST = [
     "ZM",
     "DOCU",
     # Consumer Discretionary & Staples
-    "TSLA",
-    "AMZN",
     "HD",
     "MCD",
     "NKE",
@@ -83,10 +81,8 @@ STOCKS_WATCHLIST = [
     "TJX",
     "TGT",
     "DIS",
-    "NFLX",
     "CMCSA",
     "BKNG",
-    "ABNB",
     "MAR",
     "HLT",
     "YUM",
@@ -273,10 +269,10 @@ STOCKS_WATCHLIST = [
     "BIDU",
 ]
 
-# Rimuoviamo eventuali duplicati derivanti da accorpamenti di settori
+# Rimuoviamo eventuali duplicati
 STOCKS_WATCHLIST = list(dict.fromkeys(STOCKS_WATCHLIST))
 
-# Quantità prudenziale per azione (essendo 200 titoli, 1 quota per ordine riduce l'impatto sul margine)
+# Quantità prudenziale per azione
 QUANTITY_TO_TRADE = 1
 
 
@@ -291,7 +287,7 @@ def analyze_id_nr4(df):
   curr_high = df["High"].iloc[-1]
   curr_low = df["High"].iloc[-1]
   prev_high = df["High"].iloc[-2]
-  prev_low = df["High"].iloc[-2]
+  prev_low = df["Low"].iloc[-2]
 
   # Condizione 1: Inside Day
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
@@ -318,27 +314,25 @@ def place_bracket_order(symbol, entry, sl, tp):
 
     order = trading_client.submit_order(order_data=order_data)
     print(
-        f"  [ALPACA] Ordine LONG inviato con successo per l'azione {symbol}! ID:"
-        f" {order.id}"
+        f"  ✅ [ALPACA] Ordine inviato per {symbol} | ID ordine: {order.id}"
     )
+    return True
   except Exception as e:
-    print(
-        f"  [ERRORE ALPACA] Impossibile inviare l'ordine per l'azione {symbol}:"
-        f" {e}"
-    )
+    print(f"  ❌ [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+    return False
 
 
 def main():
   print(
-      f"--- Bot ID/NR4 per Azioni ({len(STOCKS_WATCHLIST)} Titoli) con Alpaca"
-      " ---"
+      f"--- Avvio Scansione ID/NR4 su {len(STOCKS_WATCHLIST)} Azioni US ---"
   )
 
   end_date = datetime.today().strftime("%Y-%m-%d")
   start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
 
+  found_stocks = []
+
   for ticker in STOCKS_WATCHLIST:
-    print(f"Analisi in corso per l'azione: {ticker}...")
     try:
       data = yf.download(ticker, start=start_date, end=end_date, progress=False)
       if isinstance(data.columns, pd.MultiIndex):
@@ -353,21 +347,37 @@ def main():
           sl = low
           tp = high + (candle_range * 2.0)  # Rapporto R/R 1:2
 
-          print(f"  📌 Pattern ID/NR4 rilevato sull'azione {ticker}!")
+          print(f"\n📌 Pattern ID/NR4 TROVATO su: {ticker}")
           print(
-              f"     Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
+              f"   Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
               f" ${tp:.2f}"
           )
 
-          # Invio dell'ordine automatico ad Alpaca
-          place_bracket_order(ticker, entry, sl, tp)
-      else:
-        pass  # Evita di stampare troppi log vuoti per 200 titoli
+          # Invio dell'ordine e registrazione del successo
+          success = place_bracket_order(ticker, entry, sl, tp)
+          if success:
+            found_stocks.append(ticker)
 
     except Exception as e:
-      print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
+      # Gestisce eventuali errori di connessione temporanei su singoli ticker senza bloccare il ciclo
+      pass
 
-  print("\n--- Scansione delle 200 Azioni completata ---")
+  # --- RESOCONTO FINALE ---
+  print("\n" + "=" * 50)
+  print("             REPORT FINALE SCANSIONE AZIONI")
+  print("=" * 50)
+  if found_stocks:
+    print(
+        f"🎉 Trovate e negoziate {len(found_stocks)} azioni con pattern"
+        f" ID/NR4:"
+    )
+    for stock in found_stocks:
+      print(f"   - {stock}")
+  else:
+    print(
+        "📭 Nessuna azione ha soddisfatto i criteri ID/NR4 nell'ultima seduta."
+    )
+  print("=" * 50)
 
 
 if __name__ == "__main__":
