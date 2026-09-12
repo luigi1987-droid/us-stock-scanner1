@@ -277,17 +277,17 @@ QUANTITY_TO_TRADE = 1
 
 
 def analyze_id_nr4(df):
-  """Logica di Toby Crabel: Inside Day + NR4"""
+  """Logica di Toby Crabel: Inside Day + NR4 (Corretta)"""
   if len(df) < 5:
-    return False, 0, 0
+    return False, 0, 0, 0
 
   df = df.copy()
   df["Range"] = df["High"] - df["Low"]
 
   curr_high = df["High"].iloc[-1]
-  curr_low = df["High"].iloc[-1]
+  curr_low = df["Low"].iloc[-1]  # Corretto: legge il minimo odierno
   prev_high = df["High"].iloc[-2]
-  prev_low = df["Low"].iloc[-2]
+  prev_low = df["Low"].iloc[-2]  # Corretto: legge il minimo di ieri
 
   # Condizione 1: Inside Day
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
@@ -359,7 +359,7 @@ def main():
             found_stocks.append(ticker)
 
     except Exception as e:
-      # Gestisce eventuali errori di connessione temporanei su singoli ticker senza bloccare il ciclo
+      # Gestisce eventuali errori temporanei senza bloccare il ciclo
       pass
 
   # --- RESOCONTO FINALE ---
