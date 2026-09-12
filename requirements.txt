@@ -3,3 +3,4 @@ pandas
 lxml
 html5lib
 requests
+alpaca-py
