@@ -1,0 +1,157 @@
+from datetime import datetime, timedelta
+import os
+import pandas as pd
+import yfinance as yf
+
+# Librerie ufficiali Alpaca
+from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
+from alpaca.trading.requests import (
+    StopLossRequest,
+    StopOrderRequest,
+    TakeProfitRequest,
+)
+
+# 1. Autenticazione con i Secret di GitHub
+API_KEY = os.getenv("ALPACA_API_KEY_ID")
+API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
+
+# paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
+trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
+
+# 2. Watchlist estesa a 30 ETF di riferimento globale e settoriale
+ETF_WATCHLIST = [
+    # Indici Generali e Mercato USA
+    "SPY",  # S&P 500
+    "QQQ",  # Nasdaq 100
+    "IWM",  # Russell 2000 (Small Cap)
+    "MDY",  # S&P MidCap 400
+    "DIA",  # Dow Jones Industrial Average
+    # Settori S&P 500 (GICS)
+    "XLE",  # Energy (Energia)
+    "XLF",  # Financial (Finanziari)
+    "XLK",  # Technology (Tecnologia)
+    "XLV",  # Health Care (Sanità)
+    "XLI",  # Industrial (Industriali)
+    "XLP",  # Consumer Staples (Beni di consumo primari)
+    "XLY",  # Consumer Discretionary (Beni di consumo voluttuari)
+    "XLU",  # Utilities (Servizi pubblici)
+    "XLB",  # Materials (Materiali di base)
+    "XLRE",  # Real Estate (Immobiliare)
+    "XLC",  # Communication Services (Telecomunicazioni e Media)
+    # Tematici e Crescita
+    "SMH",  # Semiconduttori
+    "IGV",  # Software & Services
+    "ARKK",  # Innovation / Disruptive Tech
+    "XBI",  # Biotech
+    "ITA",  # Aerospace & Defense (Aerospaziale e Difesa)
+    "KRE",  # Regional Banking (Banche regionali)
+    # Materie Prime e Beni Rifugio
+    "GLD",  # Gold (Oro)
+    "SLV",  # Silver (Argento)
+    "USO",  # Oil Fund (Petrolio)
+    "DBA",  # Agriculture (Agricoltura)
+    # Obbligazionario e Macro
+    "TLT",  # 20+ Year Treasury Bond (Tassi lunghi USA)
+    "IEF",  # 7-10 Year Treasury Bond
+    "HYG",  # High Yield Corporate Bond (Obbligazioni corporate alto rendimento)
+    "EEM",  # Emerging Markets (Mercati Emergenti)
+]
+
+# Quantità di quote predefinite per singolo ETF
+QUANTITY_TO_TRADE = 5
+
+
+def analyze_id_nr4(df):
+  """Logica di Toby Crabel: Inside Day + NR4"""
+  if len(df) < 5:
+    return False, 0, 0
+
+  df = df.copy()
+  df["Range"] = df["High"] - df["Low"]
+
+  curr_high = df["High"].iloc[-1]
+  curr_low = df["Low"].iloc[-1]
+  prev_high = df["High"].iloc[-2]
+  prev_low = df["High"].iloc[-2]
+
+  # Condizione 1: Inside Day (il range odierno è dentro quello di ieri)
+  is_inside = (curr_high < prev_high) and (curr_low > prev_low)
+
+  # Condizione 2: NR4 (il range odierno è il più basso delle ultime 4 sedute)
+  is_nr4 = df["Range"].iloc[-1] == df["Range"].iloc[-4:].min()
+
+  return is_inside and is_nr4, curr_high, curr_low
+
+
+def place_bracket_order(symbol, entry, sl, tp):
+  """Invia un ordine di tipo Stop con protezione Bracket (SL e TP) su Alpaca"""
+  try:
+    order_data = StopOrderRequest(
+        symbol=symbol,
+        qty=QUANTITY_TO_TRADE,
+        side=OrderSide.BUY,
+        stop_price=round(entry, 2),
+        time_in_force=TimeInForce.GTC,
+        order_class=OrderClass.BRACKET,
+        take_profit=TakeProfitRequest(limit_price=round(tp, 2)),
+        stop_loss=StopLossRequest(stop_price=round(sl, 2)),
+    )
+
+    order = trading_client.submit_order(order_data=order_data)
+    print(
+        f"  [ALPACA] Ordine LONG inviato con successo per {symbol}! ID:"
+        f" {order.id}"
+    )
+  except Exception as e:
+    print(f"  [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+
+
+def main():
+  print(
+      f"--- Bot ID/NR4 Multi-ETF ({len(ETF_WATCHLIST)} ETF) con Esecuzione"
+      " Automatica Alpaca ---"
+  )
+
+  end_date = datetime.today().strftime("%Y-%m-%d")
+  start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
+
+  # Scansione ciclica di ogni ETF nella watchlist
+  for ticker in ETF_WATCHLIST:
+    print(f"\nAnalisi in corso per: {ticker}...")
+    try:
+      data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+      if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.droplevel(1)
+
+      if not data.empty and len(data) >= 5:
+        is_pattern, high, low = analyze_id_nr4(data)
+        print(f"  -> {ticker} | High={high:.2f}, Low={low:.2f}")
+
+        if is_pattern:
+          candle_range = high - low
+          entry = high
+          sl = low
+          tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
+
+          print(f"  📌 Pattern ID/NR4 rilevato su {ticker}!")
+          print(
+              f"     Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
+              f" ${tp:.2f}"
+          )
+
+          # Invio dell'ordine automatico ad Alpaca
+          place_bracket_order(ticker, entry, sl, tp)
+        else:
+          print(f"  -> Nessun pattern ID/NR4 per {ticker}.")
+      else:
+        print(f"  -> Dati storici insufficienti per {ticker}.")
+
+    except Exception as e:
+      print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
+
+  print("\n--- Scansione Multi-ETF completata ---")
+
+
+if __name__ == "__main__":
+  main()
