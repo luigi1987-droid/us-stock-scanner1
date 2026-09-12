@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 import os
-from io import StringIO
 import pandas as pd
-import requests
 import yfinance as yf
 
 # Librerie ufficiali Alpaca
@@ -18,12 +16,50 @@ from alpaca.trading.requests import (
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
 API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 
-# paper=True garantisce che l'ordine vada sulla simulazione
+# paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# Parametri operativi
-TICKER = "SPY"
-QUANTITY_TO_TRADE = 10  # Numero di quote di SPY da negoziare
+# 2. Watchlist estesa a 30 ETF di riferimento globale e settoriale
+ETF_WATCHLIST = [
+    # Indici Generali e Mercato USA
+    "SPY",  # S&P 500
+    "QQQ",  # Nasdaq 100
+    "IWM",  # Russell 2000 (Small Cap)
+    "MDY",  # S&P MidCap 400
+    "DIA",  # Dow Jones Industrial Average
+    # Settori S&P 500 (GICS)
+    "XLE",  # Energy (Energia)
+    "XLF",  # Financial (Finanziari)
+    "XLK",  # Technology (Tecnologia)
+    "XLV",  # Health Care (Sanità)
+    "XLI",  # Industrial (Industriali)
+    "XLP",  # Consumer Staples (Beni di consumo primari)
+    "XLY",  # Consumer Discretionary (Beni di consumo voluttuari)
+    "XLU",  # Utilities (Servizi pubblici)
+    "XLB",  # Materials (Materiali di base)
+    "XLRE",  # Real Estate (Immobiliare)
+    "XLC",  # Communication Services (Telecomunicazioni e Media)
+    # Tematici e Crescita
+    "SMH",  # Semiconduttori
+    "IGV",  # Software & Services
+    "ARKK",  # Innovation / Disruptive Tech
+    "XBI",  # Biotech
+    "ITA",  # Aerospace & Defense (Aerospaziale e Difesa)
+    "KRE",  # Regional Banking (Banche regionali)
+    # Materie Prime e Beni Rifugio
+    "GLD",  # Gold (Oro)
+    "SLV",  # Silver (Argento)
+    "USO",  # Oil Fund (Petrolio)
+    "DBA",  # Agriculture (Agricoltura)
+    # Obbligazionario e Macro
+    "TLT",  # 20+ Year Treasury Bond (Tassi lunghi USA)
+    "IEF",  # 7-10 Year Treasury Bond
+    "HYG",  # High Yield Corporate Bond (Obbligazioni corporate alto rendimento)
+    "EEM",  # Emerging Markets (Mercati Emergenti)
+]
+
+# Quantità di quote predefinite per singolo ETF
+QUANTITY_TO_TRADE = 5
 
 
 def analyze_id_nr4(df):
@@ -37,7 +73,7 @@ def analyze_id_nr4(df):
   curr_high = df["High"].iloc[-1]
   curr_low = df["Low"].iloc[-1]
   prev_high = df["High"].iloc[-2]
-  prev_low = df["Low"].iloc[-2]
+  prev_low = df["High"].iloc[-2]
 
   # Condizione 1: Inside Day (il range odierno è dentro quello di ieri)
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
@@ -72,44 +108,49 @@ def place_bracket_order(symbol, entry, sl, tp):
 
 
 def main():
-  print("--- Bot ID/NR4 su SPY con Esecuzione Automatica Alpaca ---")
+  print(
+      f"--- Bot ID/NR4 Multi-ETF ({len(ETF_WATCHLIST)} ETF) con Esecuzione"
+      " Automatica Alpaca ---"
+  )
 
   end_date = datetime.today().strftime("%Y-%m-%d")
-  start_date = (datetime.today() - timedelta(days=20)).strftime("%Y-%m-%d")
+  start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
 
-  try:
-    # Scarica i dati storici giornalieri di SPY
-    data = yf.download(TICKER, start=start_date, end=end_date, progress=False)
-    if isinstance(data.columns, pd.MultiIndex):
-      data.columns = data.columns.droplevel(1)
+  # Scansione ciclica di ogni ETF nella watchlist
+  for ticker in ETF_WATCHLIST:
+    print(f"\nAnalisi in corso per: {ticker}...")
+    try:
+      data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+      if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.droplevel(1)
 
-    if not data.empty and len(data) >= 5:
-      is_pattern, high, low = analyze_id_nr4(data)
-      print(f"Analisi completata su {TICKER}: High={high:.2f}, Low={low:.2f}")
+      if not data.empty and len(data) >= 5:
+        is_pattern, high, low = analyze_id_nr4(data)
+        print(f"  -> {ticker} | High={high:.2f}, Low={low:.2f}")
 
-      if is_pattern:
-        candle_range = high - low
-        entry = high
-        sl = low
-        tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
+        if is_pattern:
+          candle_range = high - low
+          entry = high
+          sl = low
+          tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
 
-        print(f"\n📌 Pattern ID/NR4 rilevato su {TICKER}!")
-        print(
-            f"  -> Livelli calcolati: Entry (Buy Stop) ${entry:.2f} | SL"
-            f" ${sl:.2f} | TP ${tp:.2f}"
-        )
+          print(f"  📌 Pattern ID/NR4 rilevato su {ticker}!")
+          print(
+              f"     Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
+              f" ${tp:.2f}"
+          )
 
-        # Invio dell'ordine automatico ad Alpaca
-        place_bracket_order(TICKER, entry, sl, tp)
+          # Invio dell'ordine automatico ad Alpaca
+          place_bracket_order(ticker, entry, sl, tp)
+        else:
+          print(f"  -> Nessun pattern ID/NR4 per {ticker}.")
       else:
-        print(
-            f"Nessun pattern ID/NR4 riscontrato nell'ultima seduta su {TICKER}."
-        )
-    else:
-      print("Dati storici insufficienti per l'analisi.")
+        print(f"  -> Dati storici insufficienti per {ticker}.")
 
-  except Exception as e:
-    print(f"Errore durante l'esecuzione dello script: {e}")
+    except Exception as e:
+      print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
+
+  print("\n--- Scansione Multi-ETF completata ---")
 
 
 if __name__ == "__main__":
