@@ -19,22 +19,265 @@ API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 # paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# 2. Watchlist dedicata alle Azioni (Mega-Cap USA ad altissima liquidità)
+# 2. Watchlist massiccia di 200 azioni US ad alta liquidità
 STOCKS_WATCHLIST = [
-    "AAPL",  # Apple
-    "MSFT",  # Microsoft
-    "NVDA",  # NVIDIA
-    "AMZN",  # Amazon
-    "GOOGL",  # Alphabet (Google)
-    "META",  # Meta Platforms
-    "TSLA",  # Tesla
-    "AMD",  # Advanced Micro Devices
-    "NFLX",  # Netflix
-    "INTC",  # Intel
+    # Mega-Cap Tech & Growth
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "NFLX",
+    "AMD",
+    "INTC",
+    "QCOM",
+    "AVGO",
+    "TXN",
+    "ADBE",
+    "CRM",
+    "ORCL",
+    "IBM",
+    "NOW",
+    "INTU",
+    "AMAT",
+    "LRCX",
+    "MU",
+    "ADI",
+    "SNPS",
+    "CDNS",
+    "PANW",
+    "CRWD",
+    "KLAC",
+    "MCHP",
+    "ANSS",
+    "FTNT",
+    "NXPI",
+    "ADSK",
+    "MARA",
+    "RIOT",
+    "PLTR",
+    "SHOP",
+    "SNOW",
+    "UBER",
+    "ABNB",
+    "DASH",
+    "ROKU",
+    "SQ",
+    "COIN",
+    "PYPL",
+    "HOOD",
+    "U",
+    "RBLX",
+    "ZM",
+    "DOCU",
+    # Consumer Discretionary & Staples
+    "TSLA",
+    "AMZN",
+    "HD",
+    "MCD",
+    "NKE",
+    "SBUX",
+    "LOW",
+    "TJX",
+    "TGT",
+    "DIS",
+    "NFLX",
+    "CMCSA",
+    "BKNG",
+    "ABNB",
+    "MAR",
+    "HLT",
+    "YUM",
+    "DG",
+    "DLTR",
+    "ROST",
+    "ORLY",
+    "AZO",
+    "TSCO",
+    "PG",
+    "KO",
+    "PEP",
+    "WMT",
+    "COST",
+    "PM",
+    "MO",
+    "CL",
+    "KMB",
+    "GIS",
+    "SYY",
+    "EL",
+    "MDLZ",
+    "STZ",
+    "HSY",
+    "K",
+    "EA",
+    "TTWO",
+    "WBD",
+    "PARA",
+    "CHTR",
+    # Healthcare & Biotech
+    "JNJ",
+    "UNH",
+    "PFE",
+    "ABBV",
+    "MRK",
+    "LLY",
+    "TMO",
+    "ABT",
+    "DHR",
+    "BMY",
+    "AMGN",
+    "GILD",
+    "ISRG",
+    "CVS",
+    "CI",
+    "VRTX",
+    "REGN",
+    "ZTS",
+    "BSX",
+    "BDX",
+    "SYK",
+    "MDT",
+    "ELV",
+    "HUM",
+    "CNC",
+    "BAX",
+    "DXCM",
+    "IDXX",
+    "ILMN",
+    "ALGN",
+    "BIIB",
+    "MRNA",
+    # Financials & Real Estate
+    "JPM",
+    "BAC",
+    "WFC",
+    "C",
+    "GS",
+    "MS",
+    "AXP",
+    "BLK",
+    "SCHW",
+    "PNC",
+    "USB",
+    "TFC",
+    "BK",
+    "SPGI",
+    "MCO",
+    "CME",
+    "ICE",
+    "CB",
+    "PGR",
+    "TRV",
+    "AIG",
+    "MET",
+    "PRU",
+    "ALL",
+    "AFL",
+    "DFS",
+    "COF",
+    "SYF",
+    "AMP",
+    "NDAQ",
+    "PLD",
+    "AMT",
+    "CCI",
+    "EQIX",
+    "PSA",
+    "SPG",
+    "O",
+    "VICI",
+    "WELL",
+    "DLR",
+    # Industrials, Aerospace & Energy
+    "XOM",
+    "CVX",
+    "COP",
+    "EOG",
+    "SLB",
+    "PSX",
+    "VLO",
+    "MPC",
+    "OXY",
+    "HAL",
+    "BKR",
+    "WMB",
+    "KMI",
+    "GE",
+    "CAT",
+    "DE",
+    "RTX",
+    "LMT",
+    "NOC",
+    "GD",
+    "BA",
+    "HON",
+    "UNP",
+    "CSX",
+    "NSC",
+    "UPS",
+    "FDX",
+    "MMM",
+    "ITW",
+    "EMR",
+    "ETN",
+    "PH",
+    "CMI",
+    "ROK",
+    "DD",
+    "SHW",
+    "APD",
+    "ECL",
+    "NEM",
+    "FCX",
+    "DOW",
+    "PPG",
+    "CTVA",
+    "CE",
+    "VMC",
+    "MLM",
+    # Utilities & Telecommunications
+    "NEE",
+    "DUK",
+    "SO",
+    "D",
+    "AEP",
+    "SRE",
+    "EXC",
+    "XEL",
+    "ED",
+    "PCG",
+    "PEG",
+    "WEC",
+    "ES",
+    "ETR",
+    "FE",
+    "T",
+    "VZ",
+    "TMUS",
+    # Additional High-Liquidity Stocks
+    "RIVN",
+    "LCID",
+    "NIO",
+    "XPEV",
+    "LI",
+    "F",
+    "GM",
+    "VALE",
+    "PBR",
+    "BABA",
+    "JD",
+    "PDD",
+    "BIDU",
 ]
 
-# Quantità di azioni predefinite per singolo ordine
-QUANTITY_TO_TRADE = 5
+# Rimuoviamo eventuali duplicati derivanti da accorpamenti di settori
+STOCKS_WATCHLIST = list(dict.fromkeys(STOCKS_WATCHLIST))
+
+# Quantità prudenziale per azione (essendo 200 titoli, 1 quota per ordine riduce l'impatto sul margine)
+QUANTITY_TO_TRADE = 1
 
 
 def analyze_id_nr4(df):
@@ -95,7 +338,7 @@ def main():
   start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
 
   for ticker in STOCKS_WATCHLIST:
-    print(f"\nAnalisi in corso per l'azione: {ticker}...")
+    print(f"Analisi in corso per l'azione: {ticker}...")
     try:
       data = yf.download(ticker, start=start_date, end=end_date, progress=False)
       if isinstance(data.columns, pd.MultiIndex):
@@ -103,7 +346,6 @@ def main():
 
       if not data.empty and len(data) >= 5:
         is_pattern, high, low = analyze_id_nr4(data)
-        print(f"  -> {ticker} | High={high:.2f}, Low={low:.2f}")
 
         if is_pattern:
           candle_range = high - low
@@ -119,15 +361,13 @@ def main():
 
           # Invio dell'ordine automatico ad Alpaca
           place_bracket_order(ticker, entry, sl, tp)
-        else:
-          print(f"  -> Nessun pattern ID/NR4 per {ticker}.")
       else:
-        print(f"  -> Dati storici insufficienti per {ticker}.")
+        pass  # Evita di stampare troppi log vuoti per 200 titoli
 
     except Exception as e:
       print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
 
-  print("\n--- Scansione Azioni completata ---")
+  print("\n--- Scansione delle 200 Azioni completata ---")
 
 
 if __name__ == "__main__":
