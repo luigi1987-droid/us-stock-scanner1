@@ -19,46 +19,21 @@ API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 # paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# 2. Watchlist estesa a 30 ETF di riferimento globale e settoriale
-ETF_WATCHLIST = [
-    # Indici Generali e Mercato USA
-    "SPY",  # S&P 500
-    "QQQ",  # Nasdaq 100
-    "IWM",  # Russell 2000 (Small Cap)
-    "MDY",  # S&P MidCap 400
-    "DIA",  # Dow Jones Industrial Average
-    # Settori S&P 500 (GICS)
-    "XLE",  # Energy (Energia)
-    "XLF",  # Financial (Finanziari)
-    "XLK",  # Technology (Tecnologia)
-    "XLV",  # Health Care (Sanità)
-    "XLI",  # Industrial (Industriali)
-    "XLP",  # Consumer Staples (Beni di consumo primari)
-    "XLY",  # Consumer Discretionary (Beni di consumo voluttuari)
-    "XLU",  # Utilities (Servizi pubblici)
-    "XLB",  # Materials (Materiali di base)
-    "XLRE",  # Real Estate (Immobiliare)
-    "XLC",  # Communication Services (Telecomunicazioni e Media)
-    # Tematici e Crescita
-    "SMH",  # Semiconduttori
-    "IGV",  # Software & Services
-    "ARKK",  # Innovation / Disruptive Tech
-    "XBI",  # Biotech
-    "ITA",  # Aerospace & Defense (Aerospaziale e Difesa)
-    "KRE",  # Regional Banking (Banche regionali)
-    # Materie Prime e Beni Rifugio
-    "GLD",  # Gold (Oro)
-    "SLV",  # Silver (Argento)
-    "USO",  # Oil Fund (Petrolio)
-    "DBA",  # Agriculture (Agricoltura)
-    # Obbligazionario e Macro
-    "TLT",  # 20+ Year Treasury Bond (Tassi lunghi USA)
-    "IEF",  # 7-10 Year Treasury Bond
-    "HYG",  # High Yield Corporate Bond (Obbligazioni corporate alto rendimento)
-    "EEM",  # Emerging Markets (Mercati Emergenti)
+# 2. Watchlist dedicata alle Azioni (Mega-Cap USA ad altissima liquidità)
+STOCKS_WATCHLIST = [
+    "AAPL",  # Apple
+    "MSFT",  # Microsoft
+    "NVDA",  # NVIDIA
+    "AMZN",  # Amazon
+    "GOOGL",  # Alphabet (Google)
+    "META",  # Meta Platforms
+    "TSLA",  # Tesla
+    "AMD",  # Advanced Micro Devices
+    "NFLX",  # Netflix
+    "INTC",  # Intel
 ]
 
-# Quantità di quote predefinite per singolo ETF
+# Quantità di azioni predefinite per singolo ordine
 QUANTITY_TO_TRADE = 5
 
 
@@ -71,14 +46,14 @@ def analyze_id_nr4(df):
   df["Range"] = df["High"] - df["Low"]
 
   curr_high = df["High"].iloc[-1]
-  curr_low = df["Low"].iloc[-1]
+  curr_low = df["High"].iloc[-1]
   prev_high = df["High"].iloc[-2]
   prev_low = df["High"].iloc[-2]
 
-  # Condizione 1: Inside Day (il range odierno è dentro quello di ieri)
+  # Condizione 1: Inside Day
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
 
-  # Condizione 2: NR4 (il range odierno è il più basso delle ultime 4 sedute)
+  # Condizione 2: NR4
   is_nr4 = df["Range"].iloc[-1] == df["Range"].iloc[-4:].min()
 
   return is_inside and is_nr4, curr_high, curr_low
@@ -100,25 +75,27 @@ def place_bracket_order(symbol, entry, sl, tp):
 
     order = trading_client.submit_order(order_data=order_data)
     print(
-        f"  [ALPACA] Ordine LONG inviato con successo per {symbol}! ID:"
+        f"  [ALPACA] Ordine LONG inviato con successo per l'azione {symbol}! ID:"
         f" {order.id}"
     )
   except Exception as e:
-    print(f"  [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+    print(
+        f"  [ERRORE ALPACA] Impossibile inviare l'ordine per l'azione {symbol}:"
+        f" {e}"
+    )
 
 
 def main():
   print(
-      f"--- Bot ID/NR4 Multi-ETF ({len(ETF_WATCHLIST)} ETF) con Esecuzione"
-      " Automatica Alpaca ---"
+      f"--- Bot ID/NR4 per Azioni ({len(STOCKS_WATCHLIST)} Titoli) con Alpaca"
+      " ---"
   )
 
   end_date = datetime.today().strftime("%Y-%m-%d")
   start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
 
-  # Scansione ciclica di ogni ETF nella watchlist
-  for ticker in ETF_WATCHLIST:
-    print(f"\nAnalisi in corso per: {ticker}...")
+  for ticker in STOCKS_WATCHLIST:
+    print(f"\nAnalisi in corso per l'azione: {ticker}...")
     try:
       data = yf.download(ticker, start=start_date, end=end_date, progress=False)
       if isinstance(data.columns, pd.MultiIndex):
@@ -132,9 +109,9 @@ def main():
           candle_range = high - low
           entry = high
           sl = low
-          tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
+          tp = high + (candle_range * 2.0)  # Rapporto R/R 1:2
 
-          print(f"  📌 Pattern ID/NR4 rilevato su {ticker}!")
+          print(f"  📌 Pattern ID/NR4 rilevato sull'azione {ticker}!")
           print(
               f"     Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
               f" ${tp:.2f}"
@@ -150,7 +127,7 @@ def main():
     except Exception as e:
       print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
 
-  print("\n--- Scansione Multi-ETF completata ---")
+  print("\n--- Scansione Azioni completata ---")
 
 
 if __name__ == "__main__":
