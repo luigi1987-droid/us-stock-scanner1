@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 import os
+from io import StringIO
 import pandas as pd
 import requests
 import yfinance as yf
 
-# Librerie Alpaca
+# Librerie ufficiali Alpaca
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.requests import (
@@ -13,61 +14,47 @@ from alpaca.trading.requests import (
     TakeProfitRequest,
 )
 
-# Utilizziamo i nomi esatti dei tuoi Secret di GitHub
+# 1. Autenticazione con i Secret di GitHub
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
 API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 
-# paper=True garantisce che si usi il conto di simulazione
+# paper=True garantisce che l'ordine vada sulla simulazione
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# Imposta quanti titoli comprare per ogni segnale
-QUANTITY_PER_TRADE = 2
-
-
-def get_top_us_tickers(n=300):
-  try:
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-            " like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-    }
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    table = pd.read_html(response.text)
-    tickers = table[0]["Symbol"].tolist()
-    return [t.replace(".", "-") for t in tickers[:n]]
-  except Exception as e:
-    print(f"Errore nel recupero dei ticker: {e}")
-    return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
+# Parametri operativi
+TICKER = "SPY"
+QUANTITY_TO_TRADE = 10  # Numero di quote di SPY da negoziare
 
 
 def analyze_id_nr4(df):
+  """Logica di Toby Crabel: Inside Day + NR4"""
   if len(df) < 5:
     return False, 0, 0
+
   df = df.copy()
   df["Range"] = df["High"] - df["Low"]
+
   curr_high = df["High"].iloc[-1]
   curr_low = df["Low"].iloc[-1]
   prev_high = df["High"].iloc[-2]
   prev_low = df["Low"].iloc[-2]
 
+  # Condizione 1: Inside Day (il range odierno è dentro quello di ieri)
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
+
+  # Condizione 2: NR4 (il range odierno è il più basso delle ultime 4 sedute)
   is_nr4 = df["Range"].iloc[-1] == df["Range"].iloc[-4:].min()
 
   return is_inside and is_nr4, curr_high, curr_low
 
 
-def place_alpaca_bracket_order(ticker, entry, sl, tp, side):
-  """Invia un ordine di tipo Stop con Bracket (SL e TP) su Alpaca"""
+def place_bracket_order(symbol, entry, sl, tp):
+  """Invia un ordine di tipo Stop con protezione Bracket (SL e TP) su Alpaca"""
   try:
-    order_side = OrderSide.BUY if side == "LONG" else OrderSide.SELL
-
     order_data = StopOrderRequest(
-        symbol=ticker,
-        qty=QUANTITY_PER_TRADE,
-        side=order_side,
+        symbol=symbol,
+        qty=QUANTITY_TO_TRADE,
+        side=OrderSide.BUY,
         stop_price=round(entry, 2),
         time_in_force=TimeInForce.GTC,
         order_class=OrderClass.BRACKET,
@@ -77,52 +64,52 @@ def place_alpaca_bracket_order(ticker, entry, sl, tp, side):
 
     order = trading_client.submit_order(order_data=order_data)
     print(
-        f"  [ALPACA] Ordine {side} inviato con successo per {ticker}! ID:"
+        f"  [ALPACA] Ordine LONG inviato con successo per {symbol}! ID:"
         f" {order.id}"
     )
   except Exception as e:
-    print(f"  [ERRORE ALPACA] Impossibile inviare ordine per {ticker}: {e}")
+    print(f"  [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
 
 
 def main():
-  print("--- Bot ID/NR4 con Esecuzione Automatica su Alpaca ---")
-  tickers = get_top_us_tickers(300)
-  print(f"Analisi in corso su {len(tickers)} titoli...\n")
+  print("--- Bot ID/NR4 su SPY con Esecuzione Automatica Alpaca ---")
 
   end_date = datetime.today().strftime("%Y-%m-%d")
   start_date = (datetime.today() - timedelta(days=20)).strftime("%Y-%m-%d")
-  found_count = 0
 
-  for ticker in tickers:
-    try:
-      data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-      if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.droplevel(1)
+  try:
+    # Scarica i dati storici giornalieri di SPY
+    data = yf.download(TICKER, start=start_date, end=end_date, progress=False)
+    if isinstance(data.columns, pd.MultiIndex):
+      data.columns = data.columns.droplevel(1)
 
-      if not data.empty and len(data) >= 5:
-        is_pattern, high, low = analyze_id_nr4(data)
-        if is_pattern:
-          found_count += 1
-          candle_range = high - low
+    if not data.empty and len(data) >= 5:
+      is_pattern, high, low = analyze_id_nr4(data)
+      print(f"Analisi completata su {TICKER}: High={high:.2f}, Low={low:.2f}")
 
-          # Scegliamo di operare sul lato Long (rottura a rialzo del massimo)
-          entry = high
-          sl = low
-          tp = high + (candle_range * 2.0)  # R:R 1:2
+      if is_pattern:
+        candle_range = high - low
+        entry = high
+        sl = low
+        tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
 
-          print(f"\n📌 Pattern trovato: {ticker}")
-          print(
-              f"  -> Invio ordine LONG: Entry ${entry:.2f} | SL ${sl:.2f} | TP"
-              f" ${tp:.2f}"
-          )
+        print(f"\n📌 Pattern ID/NR4 rilevato su {TICKER}!")
+        print(
+            f"  -> Livelli calcolati: Entry (Buy Stop) ${entry:.2f} | SL"
+            f" ${sl:.2f} | TP ${tp:.2f}"
+        )
 
-          # Invio effettivo dell'ordine su Alpaca
-          place_alpaca_bracket_order(ticker, entry, sl, tp, "LONG")
+        # Invio dell'ordine automatico ad Alpaca
+        place_bracket_order(TICKER, entry, sl, tp)
+      else:
+        print(
+            f"Nessun pattern ID/NR4 riscontrato nell'ultima seduta su {TICKER}."
+        )
+    else:
+      print("Dati storici insufficienti per l'analisi.")
 
-    except Exception:
-      continue
-
-  print(f"\nScansione completata. Totale ordini processati: {found_count}")
+  except Exception as e:
+    print(f"Errore durante l'esecuzione dello script: {e}")
 
 
 if __name__ == "__main__":
