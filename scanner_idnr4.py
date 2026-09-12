@@ -13,13 +13,14 @@ from alpaca.trading.requests import (
     TakeProfitRequest,
 )
 
-# Connessione ad Alpaca tramite le variabili d'ambiente (GitHub Secrets)
+# Utilizziamo i nomi esatti dei tuoi Secret di GitHub
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
 API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
+
 # paper=True garantisce che si usi il conto di simulazione
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# Imposta quanti titoli comprare per ogni segnale (puoi modificare la quantità)
+# Imposta quanti titoli comprare per ogni segnale
 QUANTITY_PER_TRADE = 2
 
 
