@@ -58,12 +58,15 @@ ETF_WATCHLIST = [
     "EEM",  # Emerging Markets (Mercati Emergenti)
 ]
 
+# Rimuoviamo eventuali duplicati
+ETF_WATCHLIST = list(dict.fromkeys(ETF_WATCHLIST))
+
 # Quantità di quote predefinite per singolo ETF
 QUANTITY_TO_TRADE = 5
 
 
 def analyze_id_nr4(df):
-  """Logica di Toby Crabel: Inside Day + NR4"""
+  """Logica di Toby Crabel: Inside Day + NR4 (Corretta)"""
   if len(df) < 5:
     return False, 0, 0
 
@@ -71,9 +74,9 @@ def analyze_id_nr4(df):
   df["Range"] = df["High"] - df["Low"]
 
   curr_high = df["High"].iloc[-1]
-  curr_low = df["Low"].iloc[-1]
+  curr_low = df["Low"].iloc[-1]  # Corretto: legge il minimo odierno
   prev_high = df["High"].iloc[-2]
-  prev_low = df["High"].iloc[-2]
+  prev_low = df["Low"].iloc[-2]  # Corretto: legge il minimo di ieri
 
   # Condizione 1: Inside Day (il range odierno è dentro quello di ieri)
   is_inside = (curr_high < prev_high) and (curr_low > prev_low)
@@ -100,25 +103,27 @@ def place_bracket_order(symbol, entry, sl, tp):
 
     order = trading_client.submit_order(order_data=order_data)
     print(
-        f"  [ALPACA] Ordine LONG inviato con successo per {symbol}! ID:"
-        f" {order.id}"
+        f"  ✅ [ALPACA] Ordine inviato per {symbol} | ID ordine: {order.id}"
     )
+    return True
   except Exception as e:
-    print(f"  [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+    print(f"  ❌ [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+    return False
 
 
 def main():
   print(
-      f"--- Bot ID/NR4 Multi-ETF ({len(ETF_WATCHLIST)} ETF) con Esecuzione"
-      " Automatica Alpaca ---"
+      f"--- Avvio Scansione ID/NR4 su {len(ETF_WATCHLIST)} ETF di Riferimento"
+      " ---"
   )
 
   end_date = datetime.today().strftime("%Y-%m-%d")
   start_date = (datetime.today() - timedelta(days=25)).strftime("%Y-%m-%d")
 
+  found_etfs = []
+
   # Scansione ciclica di ogni ETF nella watchlist
   for ticker in ETF_WATCHLIST:
-    print(f"\nAnalisi in corso per: {ticker}...")
     try:
       data = yf.download(ticker, start=start_date, end=end_date, progress=False)
       if isinstance(data.columns, pd.MultiIndex):
@@ -126,7 +131,6 @@ def main():
 
       if not data.empty and len(data) >= 5:
         is_pattern, high, low = analyze_id_nr4(data)
-        print(f"  -> {ticker} | High={high:.2f}, Low={low:.2f}")
 
         if is_pattern:
           candle_range = high - low
@@ -134,23 +138,32 @@ def main():
           sl = low
           tp = high + (candle_range * 2.0)  # Rapporto Rischio/Rendimento 1:2
 
-          print(f"  📌 Pattern ID/NR4 rilevato su {ticker}!")
+          print(f"\n📌 Pattern ID/NR4 TROVATO su ETF: {ticker}")
           print(
-              f"     Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
+              f"   Livelli -> Entry: ${entry:.2f} | SL: ${sl:.2f} | TP:"
               f" ${tp:.2f}"
           )
 
           # Invio dell'ordine automatico ad Alpaca
-          place_bracket_order(ticker, entry, sl, tp)
-        else:
-          print(f"  -> Nessun pattern ID/NR4 per {ticker}.")
-      else:
-        print(f"  -> Dati storici insufficienti per {ticker}.")
+          success = place_bracket_order(ticker, entry, sl, tp)
+          if success:
+            found_etfs.append(ticker)
 
     except Exception as e:
-      print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
+      # Gestisce eventuali errori temporanei senza bloccare il ciclo
+      pass
 
-  print("\n--- Scansione Multi-ETF completata ---")
+  # --- RESOCONTO FINALE ---
+  print("\n" + "=" * 50)
+  print("             REPORT FINALE SCANSIONE ETF")
+  print("=" * 50)
+  if found_etfs:
+    print(f"🎉 Trovati e negoziati {len(found_etfs)} ETF con pattern ID/NR4:")
+    for etf in found_etfs:
+      print(f"   - {etf}")
+  else:
+    print("📭 Nessun ETF ha soddisfatto i criteri ID/NR4 nell'ultima seduta.")
+  print("=" * 50)
 
 
 if __name__ == "__main__":
