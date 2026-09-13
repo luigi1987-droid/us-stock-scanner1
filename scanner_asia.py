@@ -19,9 +19,9 @@ API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 # paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# 2. Watchlist di ADR Asiatiche ad alta liquidità e ETF regionali quotati su US
+# 2. Watchlist asiatica espansa (~45 asset tra ADR e ETF regionali)
 ASIA_WATCHLIST = [
-    # Cina & Hong Kong (ADR)
+    # Cina & Hong Kong (Tech, E-commerce & Consumer ADRs)
     "BABA",  # Alibaba Group
     "JD",  # JD.com
     "PDD",  # PDD Holdings (Pinduoduo)
@@ -32,25 +32,39 @@ ASIA_WATCHLIST = [
     "LI",  # Li Auto
     "YUMC",  # Yum China
     "TME",  # Tencent Music
-    # Taiwan & Giappone (ADR)
+    "BILI",  # Bilibili
+    "ZTO",  # ZTO Express
+    "BEKE",  # KE Holdings
+    "TAL",  # TAL Education
+    "EDU",  # New Oriental Education
+    # Taiwan & Giappone (Seminconductor, Automotive & Finance ADRs)
     "TSM",  # Taiwan Semiconductor Manufacturing (TSMC)
     "UMC",  # United Microelectronics
+    "ASX",  # ASE Technology Holding
     "TM",  # Toyota Motor
     "SONY",  # Sony Group
     "HMC",  # Honda Motor
-    "MUFG",  # Mitsubishi UFJ Financial
+    "MUFG",  # Mitsubishi UFJ Financial Group
+    "SMFG",  # Sumitomo Mitsui Financial Group
     "NMR",  # Nomura Holdings
-    # India & Singapore (ADR)
-    "INFY",  # Infosys
-    "WIT",  # Wipro
-    "RDY",  # Dr. Reddy's Laboratories
-    # ETF Regionali Asiatici (Quotati a Wall Street)
+    # India, Corea, Singapore & Sud-Est Asiatico (ADR & Tech)
+    "INFY",  # Infosys (India)
+    "WIT",  # Wipro (India)
+    "RDY",  # Dr. Reddy's Laboratories (India)
+    "IBN",  # ICICI Bank (India)
+    "HDB",  # HDFC Bank (India)
+    "SE",  # Sea Limited (Singapore / Southeast Asia Tech)
+    "CPNG",  # Coupang (Corea del Sud / E-commerce)
+    # ETF Regionali e Paesi (Quotati a Wall Street)
     "FXI",  # iShares China Large-Cap ETF
     "MCHI",  # iShares MSCI China ETF
+    "KWEB",  # KraneShares CSI China Internet ETF (Tech cinese ad alta volatilità)
+    "ASHR",  # Xtrackers Harvest CSI 300 China A-Shares ETF
     "EWJ",  # iShares MSCI Japan ETF
     "EWY",  # iShares MSCI South Korea ETF
     "EWT",  # iShares MSCI Taiwan ETF
     "INDA",  # iShares MSCI India ETF
+    "PIN",  # Invesco India ETF
     "AAXJ",  # iShares MSCI All Country Asia ex Japan ETF
     "EEM",  # iShares MSCI Emerging Markets ETF
 ]
@@ -123,8 +137,8 @@ def place_bracket_order(symbol, entry, sl, tp):
 
 def main():
   print(
-      f"--- Avvio Scansione ID/NR4 su {len(ASIA_WATCHLIST)} ADR ed ETF Asiatici"
-      " ---"
+      f"--- Avvio Scansione ID/NR4 (con Debug) su {len(ASIA_WATCHLIST)} Asset"
+      " Asiatici ---"
   )
 
   end_date = datetime.today().strftime("%Y-%m-%d")
@@ -180,4 +194,5 @@ def main():
 
 
 if __name__ == "__main__":
+  main()n__":
   main()
