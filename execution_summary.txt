@@ -1,0 +1,13 @@
+--- Avvio Scanner ID/NR4 su Watchlist ETF ---
+Data esecuzione: 2026-09-16 23:35:40
+Analisi in corso su 30 ETF...
+
+==================================================
+         ORDINAMENTO E GESTIONE SCALARE (ETF)
+==================================================
+🏆 Trovati 12 ETF candidati. Inizio iterazione dal migliore...
+
+👉 Tentativo su ETF [TLT] | Tipo: IDNR4 Rigido | Momentum: -0.78%
+  ✅ [ALPACA] Ordine inviato con successo per ETF TLT | Qty: 1115 | ID: 6efce9e4-1f7d-4fda-a18e-81349888face
+🎉 Missione compiuta: operazione aperta con successo sull'ETF TLT!
+==================================================
