@@ -17,59 +17,25 @@ from alpaca.trading.requests import (
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
 API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 
-# paper=True garantisce che l'ordine vada sulla simulazione di Alpaca
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 
-# 2. Watchlist estesa esattamente a 30 ETF di riferimento globale e settoriale
+# Watchlist ETF
 ETF_WATCHLIST = [
-    # Indici Generali e Mercato USA (5)
-    "SPY",
-    "QQQ",
-    "IWM",
-    "MDY",
-    "DIA",
-    # Settori S&P 500 - GICS (11)
-    "XLE",
-    "XLF",
-    "XLK",
-    "XLV",
-    "XLI",
-    "XLP",
-    "XLY",
-    "XLU",
-    "XLB",
-    "XLRE",
-    "XLC",
-    # Tematici e Crescita (6)
-    "SMH",
-    "IGV",
-    "ARKK",
-    "XBI",
-    "ITA",
-    "KRE",
-    # Materie Prime e Beni Rifugio (4)
-    "GLD",
-    "SLV",
-    "USO",
-    "DBA",
-    # Obbligazionario e Macro (4)
-    "TLT",
-    "IEF",
-    "HYG",
-    "EEM",
+    "SPY", "QQQ", "IWM", "MDY", "DIA",
+    "XLE", "XLF", "XLK", "XLV", "XLI",
+    "XLP", "XLY", "XLU", "XLB", "XLRE",
+    "XLC", "SMH", "IGV", "ARKK", "XBI",
+    "ITA", "KRE", "GLD", "SLV", "USO",
+    "DBA", "TLT", "IEF", "HYG", "EEM"
 ]
 
-# Rimuoviamo eventuali duplicati per sicurezza
 ETF_WATCHLIST = list(dict.fromkeys(ETF_WATCHLIST))
-
-# Percentuale del portafoglio da allocare sul miglior ETF (90%)
 PORTFOLIO_ALLOCATION_PCT = 0.90
 
 
-def analyze_id_nr4(df, symbol=""):
-    """Logica di Toby Crabel: Inside Day + NR4 + Parametro di Momentum a 20 giorni"""
+def analyze_etf(df, symbol=""):
     if len(df) < 20:
-        return False, 0, 0, 0
+        return None
 
     df = df.copy()
     df["Range"] = df["High"] - df["Low"]
@@ -79,47 +45,58 @@ def analyze_id_nr4(df, symbol=""):
     prev_high = df["High"].iloc[-2]
     prev_low = df["Low"].iloc[-2]
 
-    # Preleviamo le ultime 4 sedute per il controllo NR4
     last_4_ranges = df["Range"].iloc[-4:]
+    last_7_ranges = df["Range"].iloc[-7:]
 
-    # Condizione 1: Inside Day
     is_inside = (curr_high < prev_high) and (curr_low > prev_low)
-
-    # Condizione 2: NR4 (il range odierno è il minimo delle ultime 4)
     is_nr4 = df["Range"].iloc[-1] == last_4_ranges.min()
+    is_nr7 = df["Range"].iloc[-1] == last_7_ranges.min()
 
-    # Parametro di Selezione/Ranking: Momentum a 20 giorni (Rendimento percentuale)
+    is_idnr4 = is_inside and is_nr4
+    is_fallback = is_inside or is_nr7
+
     momentum_score = ((df["Close"].iloc[-1] - df["Close"].iloc[-20]) / df["Close"].iloc[-20]) * 100
 
-    # --- STAMPA DI DEBUG ---
-    print(
-        f"  [CHECK] {symbol} -> Inside: {is_inside} | NR4: {is_nr4} | "
-        f"Momentum: {momentum_score:.2f}% (Oggi: {df['Range'].iloc[-1]:.4f} vs Min4g: {last_4_ranges.min():.4f})"
-    )
+    print(f"  [CHECK] {symbol} -> Inside: {is_inside} | NR4: {is_nr4} | Momentum: {momentum_score:.2f}%")
 
-    return is_inside and is_nr4, curr_high, curr_low, momentum_score
+    candle_range = curr_high - curr_low
+    if candle_range == 0:
+        candle_range = 0.01
+
+    return {
+        "ticker": symbol,
+        "entry": curr_high,
+        "sl": curr_low,
+        "tp": curr_high + (candle_range * 2.0),
+        "momentum": momentum_score,
+        "is_idnr4": is_idnr4,
+        "is_fallback": is_fallback
+    }
 
 
 def get_dynamic_quantity(entry_price):
-    """Calcola la quantità di quote per investire il 90% del capitale totale disponibile su Alpaca"""
     try:
         account = trading_client.get_account()
         equity = float(account.equity)
         target_investment = equity * PORTFOLIO_ALLOCATION_PCT
-        
         if entry_price <= 0:
             return 1
-            
-        qty = int(target_investment / entry_price)
-        return max(1, qty)  # Almeno 1 quota garantita se il capitale lo consente
-    except Exception as e:
-        print(f"  ⚠️ [AVVISO] Impossibile leggere il bilancio Alpaca ({e}). Uso default 5 quote.")
-        return 5
+        return max(1, int(target_investment / entry_price))
+    except Exception:
+        return 1
 
 
 def place_bracket_order(symbol, entry, sl, tp, qty):
-    """Invia un ordine di tipo Stop con protezione Bracket (SL e TP) su Alpaca"""
     try:
+        latest_trade = trading_client.get_latest_trade({"symbol": symbol})
+        current_price = float(latest_trade[symbol].price)
+
+        if entry <= current_price:
+            print(f"  ⚠️ [AVVISO] Il prezzo corrente ({current_price}) ha già superato l'entry stimato ({entry}). Ricalcolo dello Stop Price.")
+            entry = current_price * 1.002
+            risk = entry - sl
+            tp = entry + (risk * 2.0)
+
         order_data = StopOrderRequest(
             symbol=symbol,
             qty=qty,
@@ -130,92 +107,86 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
             take_profit=TakeProfitRequest(limit_price=round(tp, 2)),
             stop_loss=StopLossRequest(stop_price=round(sl, 2)),
         )
-
         order = trading_client.submit_order(order_data=order_data)
-        print(
-            f"  ✅ [ALPACA] Ordine inviato per {symbol} | Qty: {qty} quote | ID ordine: {order.id}"
-        )
+        print(f"  ✅ [ALPACA] Ordine inviato con successo per {symbol} | Qty: {qty} | ID: {order.id}")
         return True
     except Exception as e:
-        print(f"  ❌ [ERRORE ALPACA] Impossibile inviare l'ordine per {symbol}: {e}")
+        print(f"  ❌ [ERRORE ALPACA] Impossibile inviare ordine per {symbol}: {e}")
         return False
 
 
 def main():
-    print(
-        f"--- Avvio Scansione ID/NR4 (30 ETF | Selezione Top Momentum al 90%) ---"
-    )
+    print(f"--- Avvio Scansione ID/NR4 ({len(ETF_WATCHLIST)} ETF | Con Failover a Cascata) ---")
 
     end_date = datetime.today().strftime("%Y-%m-%d")
     start_date = (datetime.today() - timedelta(days=35)).strftime("%Y-%m-%d")
 
-    candidates = []
+    idnr4_candidates = []
+    fallback_candidates = []
 
     for ticker in ETF_WATCHLIST:
         try:
-            # Pausa di sicurezza per evitare blocchi da parte di Yahoo Finance
-            time.sleep(0.3)
-            
+            time.sleep(0.2)
             data = yf.download(ticker, start=start_date, end=end_date, progress=False)
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
 
             if not data.empty and len(data) >= 20:
-                is_pattern, high, low, momentum = analyze_id_nr4(data, symbol=ticker)
+                res = analyze_etf(data, symbol=ticker)
+                if res:
+                    if res["is_idnr4"]:
+                        idnr4_candidates.append(res)
+                    elif res["is_fallback"]:
+                        fallback_candidates.append(res)
+        except Exception:
+            pass
 
-                if is_pattern:
-                    candle_range = high - low
-                    entry = high
-                    sl = low
-                    tp = high + (candle_range * 2.0)  # Rapporto R:R 1:2
-
-                    candidates.append({
-                        "ticker": ticker,
-                        "entry": entry,
-                        "sl": sl,
-                        "tp": tp,
-                        "momentum": momentum
-                    })
-
-        except Exception as e:
-            print(f"  [ERRORE] Impossibile elaborare {ticker}: {e}")
-
-    # --- SELEZIONE DEL MIGLIORE TRA I CANDIDATI ---
     print("\n" + "=" * 50)
-    print("         VALUTAZIONE E SCELTA DEL MIGLIOR ETF")
+    print("         ORDINAMENTO E GESTIONE SCALARE")
     print("=" * 50)
 
-    if candidates:
-        # Ordiniamo per Momentum decrescente (il valore più alto vince)
-        candidates.sort(key=lambda x: x["momentum"], reverse=True)
+    # Ordiniamo entrambi i gruppi per momentum decrescente
+    idnr4_candidates.sort(key=lambda x: x["momentum"], reverse=True)
+    fallback_candidates.sort(key=lambda x: x["momentum"], reverse=True)
+
+    # Uniamo le liste dando priorità assoluta agli IDNR4 perfetti, seguiti dai fallback
+    all_candidates = idnr4_candidates + fallback_candidates
+
+    order_sent = False
+
+    if all_candidates:
+        print(f"🏆 Trovati {len(all_candidates)} candidati validi. Inizio iterazione in base al Momentum...")
         
-        best_etf = candidates[0]
-        print(f"🏆 Trovati {len(candidates)} ETF idonei. Il migliore per Momentum è: {best_etf['ticker']} ({best_etf['momentum']:.2f}%)")
-        
-        if len(candidates) > 1:
-            print("   (Altri candidati validi ma scartati in favore del migliore):")
-            for alt in candidates[1:]:
-                print(f"    - {alt['ticker']} (Momentum: {alt['momentum']:.2f}%)")
-
-        # Calcolo quote per allocare il 90% del capitale
-        qty_to_buy = get_dynamic_quantity(best_etf["entry"])
-
-        print(f"\n  📌 Esecuzione ordine al 90% su: {best_etf['ticker']}")
-        print(
-            f"     Livelli -> Entry: ${best_etf['entry']:.2f} | SL: ${best_etf['sl']:.2f} | "
-            f"TP: ${best_etf['tp']:.2f} | Quote: {qty_to_buy}"
-        )
-
-        place_bracket_order(best_etf['ticker'], best_etf['entry'], best_etf['sl'], best_etf['tp'], qty_to_buy)
-        
-        print("\n" + "=" * 50)
-        print(f"🎉 Operazione completata con successo sul miglior ETF: {best_etf['ticker']}")
-        print("=" * 50)
-
+        for candidate in all_candidates:
+            ticker = candidate["ticker"]
+            c_type = "IDNR4 Rigido" if candidate["is_idnr4"] else "Fallback Flessibile"
+            
+            print(f"\n👉 Tentativo su [{ticker}] | Tipo: {c_type} | Momentum: {candidate['momentum']:.2f}%")
+            
+            qty_to_buy = get_dynamic_quantity(candidate["entry"])
+            
+            # Tenta l'invio dell'ordine
+            success = place_bracket_order(
+                ticker, 
+                candidate['entry'], 
+                candidate['sl'], 
+                candidate['tp'], 
+                qty_to_buy
+            )
+            
+            if success:
+                print(f"🎉 Missione compiuta: operazione aperta con successo su {ticker}!")
+                order_sent = True
+                break
+            else:
+                print(f"🔄 Fallito per {ticker}. Scorro al prossimo in classifica...")
+                continue
+                
+        if not order_sent:
+            print("\n❌ Tutti i candidati in classifica hanno fallito l'invio dell'ordine su Alpaca.")
     else:
-        print("📭 Nessun ETF ha soddisfatto i criteri ID/NR4 nell'ultima seduta. Nessun ordine inviato.")
-        print("=" * 50)
-
+        print("\n📭 Nessun ETF idoneo trovato neanche con i criteri di riserva.")
+    print("=" * 50)
 
 if __name__ == "__main__":
     main()
