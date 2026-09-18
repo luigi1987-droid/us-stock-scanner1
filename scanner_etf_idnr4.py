@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 import os
 import time
 import pandas as pd
-import yfinance as yf
 
 # Librerie ufficiali Alpaca (Trading & Data)
 from alpaca.trading.client import TradingClient
@@ -13,7 +12,8 @@ from alpaca.trading.requests import (
     TakeProfitRequest,
 )
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestTradeRequest
+from alpaca.data.requests import StockLatestTradeRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 
 # Autenticazione con i Secret di GitHub
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
@@ -25,38 +25,22 @@ data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 PORTFOLIO_ALLOCATION_PCT = 0.90
 
-# Watchlist dedicata agli ETF principali della borsa americana
+# Watchlist ampliata con circa 60 ETF liquidi (Broad Market, Settori, Internazionali, Fattori, Obbligazionari, Commodity)
 ETF_WATCHLIST = [
-    "SPY",
-    "QQQ",
-    "IWM",
-    "MDY",
-    "DIA",
-    "XLE",
-    "XLF",
-    "XLK",
-    "XLV",
-    "XLI",
-    "XLP",
-    "XLY",
-    "XLU",
-    "XLB",
-    "XLRE",
-    "XLC",
-    "SMH",
-    "IGV",
-    "ARKK",
-    "XBI",
-    "ITA",
-    "KRE",
-    "GLD",
-    "SLV",
-    "USO",
-    "DBA",
-    "TLT",
-    "IEF",
-    "HYG",
-    "EEM",
+    # Mercato Generale / Indici Principali
+    "SPY", "QQQ", "IWM", "MDY", "DIA", "VTI", "IVV", "RSP",
+    # Settori USA (SPDR)
+    "XLE", "XLF", "XLK", "XLV", "XLI", "XLP", "XLY", "XLU", "XLB", "XLRE", "XLC",
+    # Sottosettori e Industrie ad alta volatilità
+    "SMH", "IGV", "ARKK", "XBI", "ITA", "KRE", "XHB", "XRT", "XME", "XOP", "IYT", "KBE", "IBB",
+    # Internazionali / Emergenti
+    "EEM", "EFA", "EWJ", "EWG", "EWZ", "FXI", "INDA", "MCHI", "VGK",
+    # Fattori e Smart Beta
+    "SCHD", "VIG", "MTUM", "VLUE", "USMV",
+    # Obbligazionari
+    "TLT", "IEF", "SHY", "HYG", "LQD", "EMB", "TIP",
+    # Materie Prime e Valute
+    "GLD", "SLV", "USO", "DBA", "UNG", "UUP"
 ]
 
 log_output = []
@@ -152,12 +136,12 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner ID/NR4 su Watchlist ETF ---")
+    log_print("--- Avvio Scanner ID/NR4 su Watchlist ETF Ampliata ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
     log_print(f"Analisi in corso su {len(ETF_WATCHLIST)} ETF...")
 
-    end_date = datetime.today().strftime("%Y-%m-%d")
-    start_date = (datetime.today() - timedelta(days=35)).strftime("%Y-%m-%d")
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=35)
 
     idnr4_candidates = []
     fallback_candidates = []
@@ -165,9 +149,32 @@ def main():
     for ticker in ETF_WATCHLIST:
         try:
             time.sleep(0.1)
-            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = data.columns.droplevel(1)
+            
+            # Richiesta dati storici tramite Alpaca Data API
+            request_params = StockBarsRequest(
+                symbol_or_symbols=ticker,
+                timeframe=TimeFrame.Day,
+                start=start_date,
+                end=end_date
+            )
+            bars = data_client.get_stock_bars(request_params)
+            data = bars.df
+
+            if data.empty:
+                continue
+
+            # Pulizia dell'indice MultiIndex di Alpaca se presente
+            if isinstance(data.index, pd.MultiIndex):
+                data = data.xs(ticker, level=0)
+
+            # Rinomina le colonne minuscole di Alpaca nel formato atteso dal codice
+            data = data.rename(columns={
+                'open': 'Open',
+                'high': 'High',
+                'low': 'Low',
+                'close': 'Close',
+                'volume': 'Volume'
+            })
 
             if not data.empty and len(data) >= 20:
                 res = analyze_etf(data, symbol=ticker)
@@ -180,7 +187,7 @@ def main():
             continue
 
     log_print("\n" + "=" * 50)
-    log_print("         ORDINAMENTO E GESTIONE SCALARE (ETF)")
+    log_print("        ORDINAMENTO E GESTIONE SCALARE (ETF)")
     log_print("=" * 50)
 
     idnr4_candidates.sort(key=lambda x: x["momentum"], reverse=True)
