@@ -1,9 +1,9 @@
---- Avvio Scanner ID/NR4 su Watchlist ETF ---
-Data esecuzione: 2026-09-18 01:19:43
-Analisi in corso su 30 ETF...
+--- Avvio Scanner ID/NR4 su Watchlist ETF Ampliata ---
+Data esecuzione: 2026-09-18 01:24:44
+Analisi in corso su 59 ETF...
 
 ==================================================
-         ORDINAMENTO E GESTIONE SCALARE (ETF)
+        ORDINAMENTO E GESTIONE SCALARE (ETF)
 ==================================================
 
 📭 Nessun ETF idoneo trovato con il pattern nell'ultima seduta.
