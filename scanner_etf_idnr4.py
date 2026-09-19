@@ -11,9 +11,9 @@ from alpaca.trading.requests import (
     TakeProfitRequest,
 )
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestTradeRequest, StockBarsRequest
+from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-from alpaca.data.enums import DataFeed  # <-- Necessario per evitare l'errore SIP
+from alpaca.data.enums import DataFeed
 
 # Autenticazione con i Secret di GitHub
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
@@ -102,7 +102,6 @@ def analyze_daily_etf(df, symbol=""):
     idnr4_res = base_dict.copy() if is_idnr4 else None
     crabel_res = base_dict.copy() if (is_crabel_setup and not is_idnr4) else None
     
-    # 3. Candidato Momentum Puro per il Livello 4 (se in uptrend)
     momentum_res = None
     if is_uptrend:
         momentum_res = base_dict.copy()
@@ -112,7 +111,8 @@ def analyze_daily_etf(df, symbol=""):
 
 def analyze_intraday_orb(symbol, data_client):
     try:
-        end_date = datetime.now()
+        # Spostiamo l'end_date indietro di 20 minuti per evitare il blocco SIP sui piani gratuiti
+        end_date = datetime.now() - timedelta(minutes=20)
         start_date = end_date - timedelta(days=3)
 
         request_params = StockBarsRequest(
@@ -120,7 +120,7 @@ def analyze_intraday_orb(symbol, data_client):
             timeframe=TimeFrame(5, TimeFrameUnit.Minute),
             start=start_date,
             end=end_date,
-            feed=DataFeed.IEX  # <-- Impostato feed IEX
+            feed=DataFeed.IEX
         )
         bars = data_client.get_stock_bars(request_params)
         if not bars or not hasattr(bars, 'df') or bars.df.empty:
@@ -169,16 +169,8 @@ def get_dynamic_quantity(entry_price):
         return 1
 
 
-def place_bracket_order(symbol, entry, sl, tp, qty):
+def place_bracket_order(symbol, entry, sl, tp, qty, current_price):
     try:
-        request_params = StockLatestTradeRequest(symbol_or_symbols=symbol)
-        latest_trade = data_client.get_stock_latest_trade(request_params)
-        
-        if symbol not in latest_trade:
-            return False
-            
-        current_price = float(latest_trade[symbol].price)
-
         if entry <= current_price:
             entry = current_price * 1.002
             risk = entry - sl
@@ -203,16 +195,18 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro) ---")
+    log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro IEX) ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    end_date = datetime.now()
+    # Spostiamo l'end_date indietro di 20 minuti per rispettare i limiti del piano gratuito
+    end_date = datetime.now() - timedelta(minutes=20)
     start_date = end_date - timedelta(days=45)
 
     idnr4_candidates = []
     crabel_candidates = []
     orb_candidates = []
     momentum_candidates = []
+    latest_prices = {}
 
     for ticker in ETF_WATCHLIST:
         try:
@@ -222,7 +216,7 @@ def main():
                 timeframe=TimeFrame.Day,
                 start=start_date,
                 end=end_date,
-                feed=DataFeed.IEX  # <-- Impostato feed IEX
+                feed=DataFeed.IEX
             )
             bars = data_client.get_stock_bars(request_params)
             
@@ -232,6 +226,10 @@ def main():
                     data = data.xs(ticker, level=0)
 
                 data = data.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+                
+                # Salviamo il prezzo di chiusura corrente calcolato dalle barre storiche IEX
+                if not data.empty:
+                    latest_prices[ticker] = float(data['Close'].iloc[-1])
 
                 if len(data) >= 25:
                     res_idnr4, res_crabel, res_mom = analyze_daily_etf(data, symbol=ticker)
@@ -261,14 +259,21 @@ def main():
 
     order_sent = False
 
+    # Funzione interna per processare l'invio dell'ordine con il prezzo sicuro
+    def try_send(candidate):
+        ticker = candidate["ticker"]
+        if ticker not in latest_prices:
+            return False
+        qty = get_dynamic_quantity(candidate["entry"])
+        curr_price = latest_prices[ticker]
+        return place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty, curr_price)
+
     # LIVELLO 1: IDNR4
     if idnr4_candidates:
         log_print(f"🏆 Trovati {len(idnr4_candidates)} candidati IDNR4.")
         for candidate in idnr4_candidates:
-            ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 1] IDNR4 [{ticker}]")
-            qty = get_dynamic_quantity(candidate["entry"])
-            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+            log_print(f"\n👉 [LIVELLO 1] IDNR4 [{candidate['ticker']}]")
+            if try_send(candidate):
                 order_sent = True
                 break
     else:
@@ -278,10 +283,8 @@ def main():
     if not order_sent and crabel_candidates:
         log_print(f"\n🏆 Trovati {len(crabel_candidates)} candidati Crabel Daily.")
         for candidate in crabel_candidates:
-            ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 2] Crabel Daily [{ticker}]")
-            qty = get_dynamic_quantity(candidate["entry"])
-            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+            log_print(f"\n👉 [LIVELLO 2] Crabel Daily [{candidate['ticker']}]")
+            if try_send(candidate):
                 order_sent = True
                 break
     else:
@@ -292,10 +295,8 @@ def main():
     if not order_sent and orb_candidates:
         log_print(f"\n🏆 Trovati {len(orb_candidates)} candidati Intraday ORB.")
         for candidate in orb_candidates:
-            ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 3] Intraday ORB [{ticker}]")
-            qty = get_dynamic_quantity(candidate["entry"])
-            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+            log_print(f"\n👉 [LIVELLO 3] Intraday ORB [{candidate['ticker']}]")
+            if try_send(candidate):
                 order_sent = True
                 break
     else:
@@ -306,10 +307,8 @@ def main():
     if not order_sent and momentum_candidates:
         log_print(f"\n🏆 Attivazione Livello 4 (Fallback Assoluto Momentum). Selezione del miglior ETF in trend...")
         for candidate in momentum_candidates:
-            ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 4 - Fallback Trend/Momentum] {ticker} | Momentum 20D: {candidate['momentum']:.2f}%")
-            qty = get_dynamic_quantity(candidate["entry"])
-            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+            log_print(f"\n👉 [LIVELLO 4 - Fallback Trend/Momentum] {candidate['ticker']} | Momentum 20D: {candidate['momentum']:.2f}%")
+            if try_send(candidate):
                 order_sent = True
                 break
     else:
