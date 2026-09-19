@@ -48,9 +48,6 @@ def log_print(message):
 
 
 def analyze_daily_etf(df, symbol=""):
-    """
-    Analisi giornaliera: IDNR4 e Compressione Crabel.
-    """
     if len(df) < 25:
         return None, None
 
@@ -65,13 +62,13 @@ def analyze_daily_etf(df, symbol=""):
     prev_low = df["Low"].iloc[-2]
     curr_range = df["Range"].iloc[-1]
 
-    # --- 1. CONTROLLO IDNR4 RIGIDO ---
+    # 1. IDNR4 Rigido
     last_4_ranges_strict = df["Range"].iloc[-4:]
     is_inside = (curr_high < prev_high) and (curr_low > prev_low)
     is_nr4_strict = curr_range == last_4_ranges_strict.min()
     is_idnr4 = is_inside and is_nr4_strict
 
-    # --- 2. CONTROLLO COMPRESSIONE CRABEL (FALLBACK) ---
+    # 2. Compressione Crabel (Fallback)
     last_4_crabel = df["Range"].iloc[-5:-1]
     last_7_crabel = df["Range"].iloc[-8:-1]
     is_nr4_crabel = curr_range <= last_4_crabel.min()
@@ -108,13 +105,7 @@ def analyze_daily_etf(df, symbol=""):
 
 
 def analyze_intraday_orb(symbol, data_client):
-    """
-    Analisi Intraday ORB (Opening Range Breakout):
-    Prende i dati a 5 minuti dell'ultima seduta, calcola il range dei primi 30 minuti (9:30 - 10:00 ET)
-    e imposta un livello di breakout rialzista sul massimo di quella finestra.
-    """
     try:
-        # Scarichiamo le ultime 24 ore di barre a 5 minuti per trovare l'ultima sessione
         end_date = datetime.now()
         start_date = end_date - timedelta(days=3)
 
@@ -133,23 +124,16 @@ def analyze_intraday_orb(symbol, data_client):
             df = df.xs(symbol, level=0)
 
         df = df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
-        
-        # Filtriamo solo l'ultimo giorno disponibile nel DataFrame
         df['Date'] = df.index.date
         last_date = df['Date'].iloc[-1]
         df_day = df[df['Date'] == last_date]
 
-        if len(df_day) < 6: # Servono almeno 30 minuti (6 barre da 5 min)
+        if len(df_day) < 6:
             return None
 
-        # I primi 30 minuti della sessione americana (dalle 9:30 alle 10:00 ora locale di borsa)
-        # Assumendo che l'indice temporale sia in orario UTC o Exchange time, prendiamo le prime 6 barre della giornata
         orb_window = df_day.iloc[:6]
         orb_high = orb_window["High"].max()
         orb_low = orb_window["Low"].min()
-        
-        # Prezzo attuale o ultima barra della giornata
-        current_close = df_day["Close"].iloc[-1]
         
         risk = orb_high - orb_low
         if risk <= 0:
@@ -160,7 +144,7 @@ def analyze_intraday_orb(symbol, data_client):
             "entry": orb_high,
             "sl": orb_low,
             "tp": orb_high + (risk * 2.0),
-            "score": orb_high - orb_low  # Usato per ordinare (es. range iniziale stretto)
+            "score": orb_high - orb_low
         }
     except Exception:
         return None
@@ -204,7 +188,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
             stop_loss=StopLossRequest(stop_price=round(sl, 2)),
         )
         order = trading_client.submit_order(order_data=order_data)
-        log_print(f"  ✅ [ALPACA] Ordine inviato con successo per ETF {symbol} | Qty: {qty} | ID: {order.id}")
+        log_print(f"  ✅ [ALPACA] Ordine inviato per {symbol} | Qty: {qty} | ID: {order.id}")
         return True
     except Exception as e:
         log_print(f"  ❌ [ERRORE ALPACA] Impossibile inviare ordine per {symbol}: {e}")
@@ -212,7 +196,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner Gerarchico a 3 Livelli (IDNR4 -> Crabel Daily -> Intraday ORB) ---")
+    log_print("--- Avvio Scanner Gerarchico a 3 Livelli ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
     end_date = datetime.now()
@@ -225,8 +209,6 @@ def main():
     for ticker in ETF_WATCHLIST:
         try:
             time.sleep(0.1)
-            
-            # 1. Analisi Giornaliera
             request_params = StockBarsRequest(
                 symbol_or_symbols=ticker,
                 timeframe=TimeFrame.Day,
@@ -249,7 +231,6 @@ def main():
                     if res_crabel:
                         crabel_candidates.append(res_crabel)
 
-            # 2. Analisi Intraday ORB (eseguita sempre per raccogliere candidati di riserva)
             res_orb = analyze_intraday_orb(ticker, data_client)
             if res_orb:
                 orb_candidates.append(res_orb)
@@ -261,59 +242,55 @@ def main():
     log_print("        GESTIONE GERARCHICA A 3 LIVELLI")
     log_print("=" * 50)
 
-    # Ordinamenti
     idnr4_candidates.sort(key=lambda x: x["momentum"], reverse=True)
     crabel_candidates.sort(key=lambda x: x["compression_score"], reverse=True)
-    orb_candidates.sort(key=lambda x: x["score"], reverse=True) # Range iniziale più stretto = migliore
+    orb_candidates.sort(key=lambda x: x["score"], reverse=True)
 
-    order_sent = false_flag = False
+    order_sent = False
 
-    # LIVELLO 1: IDNR4 RIGIDO
+    # LIVELLO 1: IDNR4
     if idnr4_candidates:
-        log_print(f"🏆 Trovati {len(idnr4_candidates)} candidati IDNR4. Tentativo d'ordine...")
+        log_print(f"🏆 Trovati {len(idnr4_candidates)} candidati IDNR4.")
         for candidate in idnr4_candidates:
             ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 1 - IDNR4] {ticker} | Momentum: {candidate['momentum']:.2f}%")
+            log_print(f"\n👉 [LIVELLO 1] IDNR4 [{ticker}]")
             qty = get_dynamic_quantity(candidate["entry"])
             if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
-                log_print(f"🎉 Operazione aperta con successo su IDNR4 [{ticker}]!")
                 order_sent = True
                 break
     else:
-        log_print("ℹ️ Livello 1 (IDNR4): Nessun candidato trovato.")
+        log_print("ℹ️ Livello 1 (IDNR4): Nessun candidato.")
 
-    # LIVELLO 2: CRABEL DAILY COMPRESSION (se il livello 1 non ha inviato ordini)
+    # LIVELLO 2: CRABEL DAILY
     if not order_sent and crabel_candidates:
-        log_print(f"\n🏆 Trovati {len(crabel_candidates)} candidati Crabel Daily. Tentativo d'ordine...")
+        log_print(f"\n🏆 Trovati {len(crabel_candidates)} candidati Crabel Daily.")
         for candidate in crabel_candidates:
             ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 2 - Crabel Daily] {ticker} | Compressione: {candidate['compression_score']:.2f}")
+            log_print(f"\n👉 [LIVELLO 2] Crabel Daily [{ticker}]")
             qty = get_dynamic_quantity(candidate["entry"])
             if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
-                log_print(f"🎉 Operazione aperta con successo su Crabel Daily [{ticker}]!")
                 order_sent = True
                 break
     else:
         if not order_sent:
-            log_print("ℹ️ Livello 2 (Crabel Daily): Nessun candidato trovato.")
+            log_print("ℹ️ Livello 2 (Crabel Daily): Nessun candidato.")
 
-    # LIVELLO 3: INTRADAY ORB (se i livelli precedenti non hanno trovato nulla)
+    # LIVELLO 3: INTRADAY ORB
     if not order_sent and orb_candidates:
-        log_print(f"\n🏆 Trovati {len(orb_candidates)} candidati Intraday ORB (Fallback di mercato in espansione). Tentativo...")
+        log_print(f"\n🏆 Trovati {len(orb_candidates)} candidati Intraday ORB.")
         for candidate in orb_candidates:
             ticker = candidate["ticker"]
-            log_print(f"\n👉 [LIVELLO 3 - Intraday ORB] {ticker} | Range Iniziale (30m): {candidate['score']:.2f}")
+            log_print(f"\n👉 [LIVELLO 3] Intraday ORB [{ticker}]")
             qty = get_dynamic_quantity(candidate["entry"])
             if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
-                log_print(f"🎉 Operazione aperta con successo su Intraday ORB [{ticker}]!")
                 order_sent = True
                 break
     else:
         if not order_sent:
-            log_print("ℹ️ Livello 3 (Intraday ORB): Nessun candidato trovato.")
+            log_print("ℹ️ Livello 3 (Intraday ORB): Nessun candidato.")
 
     if not order_sent:
-        log_print("\n❌ Nessun ordine eseguito su tutti e 3 i livelli della gerarchia.")
+        log_print("\n❌ Nessun ordine eseguito su tutti i livelli.")
     
     log_print("=" * 50)
 
