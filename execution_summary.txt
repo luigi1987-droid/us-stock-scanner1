@@ -1,12 +1,13 @@
---- Avvio Scanner Gerarchico a 3 Livelli ---
-Data esecuzione: 2026-09-19 02:48:10
+--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallboard Sicuro) ---
+Data esecuzione: 2026-09-19 02:55:18
 
 ==================================================
-        GESTIONE GERARCHICA A 3 LIVELLI
+        GESTIONE GERARCHICA A 4 LIVELLI
 ==================================================
 ℹ️ Livello 1 (IDNR4): Nessun candidato.
 ℹ️ Livello 2 (Crabel Daily): Nessun candidato.
 ℹ️ Livello 3 (Intraday ORB): Nessun candidato.
+ℹ️ Livello 4: Nessun candidato disponibile.
 
-❌ Nessun ordine eseguito su tutti i livelli.
+❌ Impossibile inviare alcun ordine (Watchlist vuota o errore di connessione).
 ==================================================
