@@ -3,7 +3,6 @@ import os
 import time
 import pandas as pd
 
-# Librerie ufficiali Alpaca (Trading & Data)
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.requests import (
@@ -19,13 +18,11 @@ from alpaca.data.timeframe import TimeFrame
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
 API_SECRET = os.getenv("ALPACA_API_SECRET_KEY")
 
-# Inizializzazione corretta dei client separati
 trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
 data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
 PORTFOLIO_ALLOCATION_PCT = 0.90
 
-# Watchlist ampliata con circa 60 ETF liquidi (Broad Market, Settori, Internazionali, Fattori, Obbligazionari, Commodity)
 ETF_WATCHLIST = [
     # Mercato Generale / Indici Principali
     "SPY", "QQQ", "IWM", "MDY", "DIA", "VTI", "IVV", "RSP",
@@ -51,30 +48,46 @@ def log_print(message):
 
 
 def analyze_etf(df, symbol=""):
-    if len(df) < 20:
+    """
+    Analisi combinata:
+    1. Verifica IDNR4 Rigido (Inside Day + Narrow Range 4).
+    2. Verifica Compressione Crabel (NR4/NR7 o Volatilità < Media + Trend SMA 10).
+    """
+    if len(df) < 25:
         return None
 
     df = df.copy()
     df["Range"] = df["High"] - df["Low"]
+    df["Range_SMA"] = df["Range"].rolling(window=10).mean()
+    df["SMA_10"] = df["Close"].rolling(window=10).mean()
 
     curr_high = df["High"].iloc[-1]
     curr_low = df["Low"].iloc[-1]
     prev_high = df["High"].iloc[-2]
     prev_low = df["Low"].iloc[-2]
+    curr_range = df["Range"].iloc[-1]
 
-    last_4_ranges = df["Range"].iloc[-4:]
-    last_7_ranges = df["Range"].iloc[-7:]
-
+    # --- 1. CONTROLLO IDNR4 RIGIDO ---
+    last_4_ranges_strict = df["Range"].iloc[-4:]
     is_inside = (curr_high < prev_high) and (curr_low > prev_low)
-    is_nr4 = df["Range"].iloc[-1] == last_4_ranges.min()
-    is_nr7 = df["Range"].iloc[-1] == last_7_ranges.min()
+    is_nr4_strict = curr_range == last_4_ranges_strict.min()
+    is_idnr4 = is_inside and is_nr4_strict
 
-    is_idnr4 = is_inside and is_nr4
-    is_fallback = is_inside or is_nr7
+    # --- 2. CONTROLLO COMPRESSIONE CRABEL (FALLBACK) ---
+    last_4_crabel = df["Range"].iloc[-5:-1]
+    last_7_crabel = df["Range"].iloc[-8:-1]
+    is_nr4_crabel = curr_range <= last_4_crabel.min()
+    is_nr7_crabel = curr_range <= last_7_crabel.min()
+    is_compressed = curr_range < df["Range_SMA"].iloc[-1]
+    is_uptrend = df["Close"].iloc[-1] > df["SMA_10"].iloc[-1]
+
+    is_crabel_setup = (is_nr4_crabel or is_nr7_crabel or is_compressed) and is_uptrend
 
     momentum_score = (
         (df["Close"].iloc[-1] - df["Close"].iloc[-20]) / df["Close"].iloc[-20]
     ) * 100
+
+    compression_score = (df["Range_SMA"].iloc[-1] - curr_range) / df["Range_SMA"].iloc[-1]
 
     candle_range = curr_high - curr_low
     if candle_range == 0:
@@ -86,8 +99,9 @@ def analyze_etf(df, symbol=""):
         "sl": curr_low,
         "tp": curr_high + (candle_range * 2.0),
         "momentum": momentum_score,
+        "compression_score": compression_score,
         "is_idnr4": is_idnr4,
-        "is_fallback": is_fallback,
+        "is_crabel": is_crabel_setup and not is_idnr4  # Escludiamo i doppioni se è già IDNR4
     }
 
 
@@ -107,6 +121,10 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
     try:
         request_params = StockLatestTradeRequest(symbol_or_symbols=symbol)
         latest_trade = data_client.get_stock_latest_trade(request_params)
+        
+        if symbol not in latest_trade:
+            return False
+            
         current_price = float(latest_trade[symbol].price)
 
         if entry <= current_price:
@@ -125,10 +143,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
             stop_loss=StopLossRequest(stop_price=round(sl, 2)),
         )
         order = trading_client.submit_order(order_data=order_data)
-        log_print(
-            f"  ✅ [ALPACA] Ordine inviato con successo per ETF {symbol} | Qty: {qty}"
-            f" | ID: {order.id}"
-        )
+        log_print(f"  ✅ [ALPACA] Ordine inviato con successo per ETF {symbol} | Qty: {qty} | ID: {order.id}")
         return True
     except Exception as e:
         log_print(f"  ❌ [ERRORE ALPACA] Impossibile inviare ordine per {symbol}: {e}")
@@ -136,21 +151,18 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner ID/NR4 su Watchlist ETF Ampliata ---")
+    log_print("--- Avvio Scanner Gerarchico (IDNR4 prioritario -> Crabel Fallback) ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
-    log_print(f"Analisi in corso su {len(ETF_WATCHLIST)} ETF...")
 
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=35)
+    start_date = end_date - timedelta(days=45)
 
     idnr4_candidates = []
-    fallback_candidates = []
+    crabel_candidates = []
 
     for ticker in ETF_WATCHLIST:
         try:
             time.sleep(0.1)
-            
-            # Richiesta dati storici tramite Alpaca Data API
             request_params = StockBarsRequest(
                 symbol_or_symbols=ticker,
                 timeframe=TimeFrame.Day,
@@ -158,16 +170,15 @@ def main():
                 end=end_date
             )
             bars = data_client.get_stock_bars(request_params)
-            data = bars.df
-
-            if data.empty:
+            
+            if not bars or not hasattr(bars, 'df') or bars.df.empty:
                 continue
 
-            # Pulizia dell'indice MultiIndex di Alpaca se presente
+            data = bars.df
+
             if isinstance(data.index, pd.MultiIndex):
                 data = data.xs(ticker, level=0)
 
-            # Rinomina le colonne minuscole di Alpaca nel formato atteso dal codice
             data = data.rename(columns={
                 'open': 'Open',
                 'high': 'High',
@@ -176,70 +187,57 @@ def main():
                 'volume': 'Volume'
             })
 
-            if not data.empty and len(data) >= 20:
+            if len(data) >= 25:
                 res = analyze_etf(data, symbol=ticker)
                 if res:
                     if res["is_idnr4"]:
                         idnr4_candidates.append(res)
-                    elif res["is_fallback"]:
-                        fallback_candidates.append(res)
+                    elif res["is_crabel"]:
+                        crabel_candidates.append(res)
         except Exception:
             continue
 
     log_print("\n" + "=" * 50)
-    log_print("        ORDINAMENTO E GESTIONE SCALARE (ETF)")
+    log_print("        GESTIONE GERARCHICA DEGLI ORDINI")
     log_print("=" * 50)
 
+    # Ordinamenti
     idnr4_candidates.sort(key=lambda x: x["momentum"], reverse=True)
-    fallback_candidates.sort(key=lambda x: x["momentum"], reverse=True)
-    all_candidates = idnr4_candidates + fallback_candidates
+    crabel_candidates.sort(key=lambda x: x["compression_score"], reverse=True)
 
     order_sent = False
 
-    if all_candidates:
-        log_print(
-            f"🏆 Trovati {len(all_candidates)} ETF candidati. Inizio iterazione dal migliore..."
-        )
-
-        for candidate in all_candidates:
+    # 1. TENTA PRIMA CON I CANDIDATI IDNR4 RIGIDI
+    if idnr4_candidates:
+        log_print(f"🏆 Trovati {len(idnr4_candidates)} candidati con pattern IDNR4 perfetto. Tentativo d'ordine...")
+        for candidate in idnr4_candidates:
             ticker = candidate["ticker"]
-            c_type = (
-                "IDNR4 Rigido" if candidate["is_idnr4"] else "Fallback Flessibile"
-            )
-
-            log_print(
-                f"\n👉 Tentativo su ETF [{ticker}] | Tipo: {c_type} | Momentum:"
-                f" {candidate['momentum']:.2f}%"
-            )
-
-            qty_to_buy = get_dynamic_quantity(candidate["entry"])
-            success = place_bracket_order(
-                ticker,
-                candidate["entry"],
-                candidate["sl"],
-                candidate["tp"],
-                qty_to_buy,
-            )
-
-            if success:
-                log_print(
-                    f"🎉 Missione compiuta: operazione aperta con successo sull'ETF {ticker}!"
-                )
+            log_print(f"\n👉 IDNR4 [{ticker}] | Momentum: {candidate['momentum']:.2f}%")
+            qty = get_dynamic_quantity(candidate["entry"])
+            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+                log_print(f"🎉 Operazione aperta con successo sull'ETF IDNR4: {ticker}!")
                 order_sent = True
                 break
-            else:
-                log_print(f"🔄 Fallito per {ticker}. Scorro al successivo in classifica...")
-                continue
-
-        if not order_sent:
-            log_print("\n❌ Tutti i candidati ETF in classifica hanno fallito l'ordine.")
     else:
-        log_print(
-            "\n📭 Nessun ETF idoneo trovato con il pattern nell'ultima seduta."
-        )
+        log_print("ℹ️ Nessun IDNR4 perfetto trovato oggi. Procedo con il piano di riserva Crabel...")
+
+    # 2. SE NESSUN IDNR4 HA FUNZIONATO, PASSA AL FALLBACK CRABEL (NR4/NR7 + SMA10)
+    if not order_sent and crabel_candidates:
+        log_print(f"\n🏆 Trovati {len(crabel_candidates)} candidati in compressione Crabel (con filtro SMA 10). Tentativo...")
+        for candidate in crabel_candidates:
+            ticker = candidate["ticker"]
+            log_print(f"\n👉 Crabel Setup [{ticker}] | Compressione: {candidate['compression_score']:.2f}")
+            qty = get_dynamic_quantity(candidate["entry"])
+            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+                log_print(f"🎉 Operazione aperta con successo sull'ETF Crabel: {ticker}!")
+                order_sent = True
+                break
+
+    if not order_sent:
+        log_print("\n❌ Nessun candidato idoneo (né IDNR4 né Crabel) ha superato l'invito dell'ordine oggi.")
+    
     log_print("=" * 50)
 
-    # Scrive il log su file per eventuale tracciamento
     try:
         with open("execution_summary.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(log_output))
