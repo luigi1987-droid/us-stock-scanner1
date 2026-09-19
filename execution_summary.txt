@@ -1,10 +1,10 @@
---- Avvio Scanner ID/NR4 su Watchlist ETF Ampliata ---
-Data esecuzione: 2026-09-19 00:32:17
-Analisi in corso su 59 ETF...
+--- Avvio Scanner Gerarchico (IDNR4 prioritario -> Crabel Fallback) ---
+Data esecuzione: 2026-09-19 02:32:41
 
 ==================================================
-        ORDINAMENTO E GESTIONE SCALARE (ETF)
+        GESTIONE GERARCHICA DEGLI ORDINI
 ==================================================
+ℹ️ Nessun IDNR4 perfetto trovato oggi. Procedo con il piano di riserva Crabel...
 
-📭 Nessun ETF idoneo trovato con il pattern nell'ultima seduta.
+❌ Nessun candidato idoneo (né IDNR4 né Crabel) ha superato l'invito dell'ordine oggi.
 ==================================================
