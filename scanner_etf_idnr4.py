@@ -13,6 +13,7 @@ from alpaca.trading.requests import (
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.enums import DataFeed  # <-- Necessario per evitare l'errore SIP
 
 # Autenticazione con i Secret di GitHub
 API_KEY = os.getenv("ALPACA_API_KEY_ID")
@@ -118,7 +119,8 @@ def analyze_intraday_orb(symbol, data_client):
             symbol_or_symbols=symbol,
             timeframe=TimeFrame(5, TimeFrameUnit.Minute),
             start=start_date,
-            end=end_date
+            end=end_date,
+            feed=DataFeed.IEX  # <-- Impostato feed IEX
         )
         bars = data_client.get_stock_bars(request_params)
         if not bars or not hasattr(bars, 'df') or bars.df.empty:
@@ -219,7 +221,8 @@ def main():
                 symbol_or_symbols=ticker,
                 timeframe=TimeFrame.Day,
                 start=start_date,
-                end=end_date
+                end=end_date,
+                feed=DataFeed.IEX  # <-- Impostato feed IEX
             )
             bars = data_client.get_stock_bars(request_params)
             
@@ -244,7 +247,6 @@ def main():
                 orb_candidates.append(res_orb)
 
         except Exception as e:
-            # Registra l'errore specifico invece di ignorarlo in modo silenzioso
             log_print(f"⚠️ Errore durante l'elaborazione del ticker {ticker}: {e}")
             continue
 
