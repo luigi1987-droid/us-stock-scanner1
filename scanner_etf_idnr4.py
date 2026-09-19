@@ -201,7 +201,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallboard Sicuro) ---")
+    log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro) ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
     end_date = datetime.now()
@@ -243,7 +243,9 @@ def main():
             if res_orb:
                 orb_candidates.append(res_orb)
 
-        except Exception:
+        except Exception as e:
+            # Registra l'errore specifico invece di ignorarlo in modo silenzioso
+            log_print(f"⚠️ Errore durante l'elaborazione del ticker {ticker}: {e}")
             continue
 
     log_print("\n" + "=" * 50)
@@ -298,7 +300,7 @@ def main():
         if not order_sent:
             log_print("ℹ️ Livello 3 (Intraday ORB): Nessun candidato.")
 
-    # LIVELLO 4: FALLBACK ASSOLUTO MOMENTUM & TREND (Garantisce che un ordine parta sempre)
+    # LIVELLO 4: FALLBACK ASSOLUTO MOMENTUM & TREND
     if not order_sent and momentum_candidates:
         log_print(f"\n🏆 Attivazione Livello 4 (Fallback Assoluto Momentum). Selezione del miglior ETF in trend...")
         for candidate in momentum_candidates:
