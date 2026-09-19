@@ -1,5 +1,5 @@
 --- Avvio Scanner ID/NR4 su Watchlist ETF Ampliata ---
-Data esecuzione: 2026-09-18 01:24:44
+Data esecuzione: 2026-09-19 00:32:17
 Analisi in corso su 59 ETF...
 
 ==================================================
