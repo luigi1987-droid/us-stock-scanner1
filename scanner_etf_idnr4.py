@@ -49,7 +49,7 @@ def log_print(message):
 
 def analyze_daily_etf(df, symbol=""):
     if len(df) < 25:
-        return None, None
+        return None, None, None
 
     df = df.copy()
     df["Range"] = df["High"] - df["Low"]
@@ -100,8 +100,13 @@ def analyze_daily_etf(df, symbol=""):
 
     idnr4_res = base_dict.copy() if is_idnr4 else None
     crabel_res = base_dict.copy() if (is_crabel_setup and not is_idnr4) else None
+    
+    # 3. Candidato Momentum Puro per il Livello 4 (se in uptrend)
+    momentum_res = None
+    if is_uptrend:
+        momentum_res = base_dict.copy()
 
-    return idnr4_res, crabel_res
+    return idnr4_res, crabel_res, momentum_res
 
 
 def analyze_intraday_orb(symbol, data_client):
@@ -196,7 +201,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty):
 
 
 def main():
-    log_print("--- Avvio Scanner Gerarchico a 3 Livelli ---")
+    log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallboard Sicuro) ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
     end_date = datetime.now()
@@ -205,6 +210,7 @@ def main():
     idnr4_candidates = []
     crabel_candidates = []
     orb_candidates = []
+    momentum_candidates = []
 
     for ticker in ETF_WATCHLIST:
         try:
@@ -225,11 +231,13 @@ def main():
                 data = data.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
 
                 if len(data) >= 25:
-                    res_idnr4, res_crabel = analyze_daily_etf(data, symbol=ticker)
+                    res_idnr4, res_crabel, res_mom = analyze_daily_etf(data, symbol=ticker)
                     if res_idnr4:
                         idnr4_candidates.append(res_idnr4)
                     if res_crabel:
                         crabel_candidates.append(res_crabel)
+                    if res_mom:
+                        momentum_candidates.append(res_mom)
 
             res_orb = analyze_intraday_orb(ticker, data_client)
             if res_orb:
@@ -239,12 +247,13 @@ def main():
             continue
 
     log_print("\n" + "=" * 50)
-    log_print("        GESTIONE GERARCHICA A 3 LIVELLI")
+    log_print("        GESTIONE GERARCHICA A 4 LIVELLI")
     log_print("=" * 50)
 
     idnr4_candidates.sort(key=lambda x: x["momentum"], reverse=True)
     crabel_candidates.sort(key=lambda x: x["compression_score"], reverse=True)
     orb_candidates.sort(key=lambda x: x["score"], reverse=True)
+    momentum_candidates.sort(key=lambda x: x["momentum"], reverse=True)
 
     order_sent = False
 
@@ -289,8 +298,22 @@ def main():
         if not order_sent:
             log_print("ℹ️ Livello 3 (Intraday ORB): Nessun candidato.")
 
+    # LIVELLO 4: FALLBACK ASSOLUTO MOMENTUM & TREND (Garantisce che un ordine parta sempre)
+    if not order_sent and momentum_candidates:
+        log_print(f"\n🏆 Attivazione Livello 4 (Fallback Assoluto Momentum). Selezione del miglior ETF in trend...")
+        for candidate in momentum_candidates:
+            ticker = candidate["ticker"]
+            log_print(f"\n👉 [LIVELLO 4 - Fallback Trend/Momentum] {ticker} | Momentum 20D: {candidate['momentum']:.2f}%")
+            qty = get_dynamic_quantity(candidate["entry"])
+            if place_bracket_order(ticker, candidate["entry"], candidate["sl"], candidate["tp"], qty):
+                order_sent = True
+                break
+    else:
+        if not order_sent:
+            log_print("ℹ️ Livello 4: Nessun candidato disponibile.")
+
     if not order_sent:
-        log_print("\n❌ Nessun ordine eseguito su tutti i livelli.")
+        log_print("\n❌ Impossibile inviare alcun ordine (Watchlist vuota o errore di connessione).")
     
     log_print("=" * 50)
 
