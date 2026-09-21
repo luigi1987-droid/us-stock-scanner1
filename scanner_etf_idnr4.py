@@ -327,11 +327,4 @@ def main():
         pass
 
 
-if __name__ == "__main__":
-    main()
-    # --- CONTROLLO DIAGNOSTICO ORDINE RIFIUTATO ---
-    try:
-        rejected_order = trading_client.get_order_by_id("5eef85cd-a9aa-4e21-bf26-be04266c7f54")
-        log_print(f"\n🔍 [DIAGNOSTICA] Dettaglio ordine rifiutato: {rejected_order}")
-    except Exception as e:
-        log_print(f"\n⚠️ [DIAGNOSTICA] Impossibile recuperare l'ordine: {e}")
+
