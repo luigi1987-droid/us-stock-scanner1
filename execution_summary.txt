@@ -1,5 +1,5 @@
 --- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro IEX) ---
-Data esecuzione: 2026-09-21 21:38:23
+Data esecuzione: 2026-09-21 21:45:51
 
 ==================================================
         GESTIONE GERARCHICA A 4 LIVELLI
@@ -7,5 +7,5 @@ Data esecuzione: 2026-09-21 21:38:23
 🏆 Trovati 2 candidati IDNR4.
 
 👉 [LIVELLO 1] IDNR4 [KBE]
-  ✅ [ALPACA] Ordine inviato per KBE | Qty: 1352 | ID: 7810ed97-9afa-4feb-81a4-86ca6524d929
+  ✅ [ALPACA] Ordine inviato per KBE | Qty: 1352 | ID: b84775f7-1555-4ca6-a8a8-1d5ed074c3e1
 ==================================================
