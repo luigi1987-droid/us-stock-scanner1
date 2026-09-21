@@ -111,7 +111,6 @@ def analyze_daily_etf(df, symbol=""):
 
 def analyze_intraday_orb(symbol, data_client):
     try:
-        # Spostiamo l'end_date indietro di 20 minuti per evitare il blocco SIP sui piani gratuiti
         end_date = datetime.now() - timedelta(minutes=20)
         start_date = end_date - timedelta(days=3)
 
@@ -181,7 +180,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty, current_price):
             qty=qty,
             side=OrderSide.BUY,
             stop_price=round(entry, 2),
-            time_in_force=TimeInForce.GTC,
+            time_in_force=TimeInForce.DAY,  # Modificato in DAY per evitare rifiuti fuori orario
             order_class=OrderClass.BRACKET,
             take_profit=TakeProfitRequest(limit_price=round(tp, 2)),
             stop_loss=StopLossRequest(stop_price=round(sl, 2)),
@@ -198,7 +197,6 @@ def main():
     log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro IEX) ---")
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Spostiamo l'end_date indietro di 20 minuti per rispettare i limiti del piano gratuito
     end_date = datetime.now() - timedelta(minutes=20)
     start_date = end_date - timedelta(days=45)
 
@@ -227,7 +225,6 @@ def main():
 
                 data = data.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
                 
-                # Salviamo il prezzo di chiusura corrente calcolato dalle barre storiche IEX
                 if not data.empty:
                     latest_prices[ticker] = float(data['Close'].iloc[-1])
 
@@ -259,7 +256,6 @@ def main():
 
     order_sent = False
 
-    # Funzione interna per processare l'invio dell'ordine con il prezzo sicuro
     def try_send(candidate):
         ticker = candidate["ticker"]
         if ticker not in latest_prices:
@@ -327,4 +323,5 @@ def main():
         pass
 
 
-
+if __name__ == "__main__":
+    main()
