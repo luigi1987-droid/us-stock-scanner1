@@ -1,5 +1,5 @@
 --- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro IEX) ---
-Data esecuzione: 2026-09-22 21:28:26
+Data esecuzione: 2026-09-22 21:36:19
 
 ==================================================
         GESTIONE GERARCHICA A 4 LIVELLI
@@ -9,5 +9,5 @@ Data esecuzione: 2026-09-22 21:28:26
 🏆 Trovati 20 candidati Crabel Daily.
 
 👉 [LIVELLO 2] Crabel Daily [IVV]
-  ✅ [ALPACA] Ordine inviato per IVV | Qty: 115 | ID: 65d1cb0d-c870-497a-accc-0528cb2b1a83
+  ✅ [ALPACA] Ordine inviato per IVV | Qty: 115 | ID: e1113ef4-84c1-4919-8ecc-e4fb1a77c993
 ==================================================
