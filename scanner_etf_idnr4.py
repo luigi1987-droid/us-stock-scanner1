@@ -180,7 +180,7 @@ def place_bracket_order(symbol, entry, sl, tp, qty, current_price):
             qty=qty,
             side=OrderSide.BUY,
             stop_price=round(entry, 2),
-            time_in_force=TimeInForce.DAY,  # Modificato in DAY per evitare rifiuti fuori orario
+            time_in_force=TimeInForce.DAY,
             order_class=OrderClass.BRACKET,
             take_profit=TakeProfitRequest(limit_price=round(tp, 2)),
             stop_loss=StopLossRequest(stop_price=round(sl, 2)),
@@ -195,6 +195,16 @@ def place_bracket_order(symbol, entry, sl, tp, qty, current_price):
 
 def main():
     log_print("--- Avvio Scanner Gerarchico a 4 Livelli (Con Fallback Sicuro IEX) ---")
+    
+    # Controllo di sicurezza: verifica se il mercato è aperto
+    try:
+        clock = trading_client.get_clock()
+        if not clock.is_open:
+            log_print("❌ Mercato chiuso (Is Open: False). Interrompo l'esecuzione per evitare ordini rifiutati.")
+            return
+    except Exception as e:
+        log_print(f"⚠️ Impossibile verificare lo stato del mercato: {e}")
+
     log_print(f"Data esecuzione: {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
 
     end_date = datetime.now() - timedelta(minutes=20)
@@ -323,11 +333,3 @@ def main():
         pass
 
 
-if __name__ == "__main__":
-    main()
-    # --- CONTROLLO DIAGNOSTICO ORDINE RIFIUTATO ---
-    try:
-        rejected_order = trading_client.get_order_by_id("1e33ab5a-8161-4012-8d15-be798e77f5c8")
-        log_print(f"\n🔍 [DIAGNOSTICA] Dettaglio ordine rifiutato: {rejected_order}")
-    except Exception as e:
-        log_print(f"\n⚠️ [DIAGNOSTICA] Impossibile recuperare l'ordine: {e}")
